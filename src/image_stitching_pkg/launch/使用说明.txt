@@ -1,0 +1,15 @@
+运行前在工作空间RV下执行: 
+    source install/setup.bash 以刷新匹配程序的环境变量
+维持在RV下不变，执行命令： 
+    ros2 launch image_stitching_pkg <相关launch文件>
+<相关launch文件>例如：
+    JH_ASM_record_rtsp_ais_launch.py    功能：启动三个相机实时发布各自图像，yolo图像检测发布，拼接图像发布，AIS信息输出，保存这三大类的相关信息为ros包
+    JH_ASM_record_rtsp_launch.py        功能：启动三个相机实时发布各自图像，yolo图像检测发布，拼接图像发布，保存这两大类的相关信息为ros包
+    JH_ASM_rosbag_launch.py             功能：发布已有的ros包中相机各自图像，yolo图像检测发布，拼接图像发布
+    JH_ASM_rtsp_launch.py               功能：启动三个相机实时发布各自图像，yolo图像检测发布，拼接图像发布
+
+同文件夹下的其余文件勿使用，
+修改上述文件的参数后（例如：是否裁剪全景图，是否绘制检测框，是否保存相机K R T参数），需重新编译所在功能包，即：image_stitching_pkg
+    即执行：colcon build --packages-selct image_stitching_pkg
+
+

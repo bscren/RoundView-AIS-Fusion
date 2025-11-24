@@ -1,0 +1,13 @@
+.bash_history
+.cache
+.clangd
+.ctags
+.gdbinit
+.vimrc.local
+.ycm_extra_conf.py
+.ycm_extra_conf.pyc
+CMakeLists.txt.user
+build
+compile_commands.json
+tmp
+extern/fmt/run-msbuild.bat

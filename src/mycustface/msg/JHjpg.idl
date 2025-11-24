@@ -1,0 +1,13 @@
+#include "Header.idl"
+module mycustface {
+module msg {
+struct JHjpg {
+    mycustface::msg::Header mheader;	
+    unsigned long index;
+    string message;
+    unsigned long size;
+    sequence<octet> picture;
+};
+};
+};
+

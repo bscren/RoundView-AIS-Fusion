@@ -1,0 +1,178 @@
+/**
+
+\page development_environment Development Environment
+
+\tableofcontents
+
+\section sec_devenv_intro Introduction
+This page describes the requirements in order to build the library.
+
+\section sec_devenv_requirements Requirements
+
+The primary target architecture is `x86_64`, Linux on ARM is supposed to work
+as well though. It is possible to run unit tests through `qemu-arm` or use `binfmt_misc`
+on Linux hosts.
+
+Compiler supported (older/others may work, but not tested):
+- GCC 7
+- GCC 8
+- GCC 9
+- GCC 10
+- GCC 11
+- GCC 12
+- GCC 13
+- Clang 5
+- Clang 6
+- Clang 7
+- Clang 8
+- Clang 9
+- Clang 10
+- Clang 11
+- Clang 12
+- Clang 13
+- Clang 14
+- Clang 15
+- Clang 16
+- Clang 17
+- VC++ 14.34 (_MSC_VER=1934, Visual Studio 2022)
+
+Tools needed to build the library:
+- cmake 3.19 or newer
+
+Tools needed to develop the library:
+- git
+- clang-format 10
+
+Tools needed to build the documentation:
+- doxygen
+- graphviz
+- LaTeX (there are formulas!)
+
+optional (used for development only):
+- lcov / genhtml, c++filt
+- cppcheck
+- clang-tools (analyzer)
+- perf
+
+optional (no core dependency):
+- Boost.ASIO (used only for some examples)
+- Qt 5 (used only for some examples)
+
+Opeating system:
+- Linux
+- Windows 10
+
+There are no other dependencies despite the standard library (C++17) to build this library.
+
+Other compilers may work, however untested.
+
+\section sec_devenv_build Build
+For normal, debug and release builds use the standard cmake CMAKE_BUILD_TYPE variable.
+For example a debug build:
+
+Full information developpers build:
+\code
+	mkdir build
+	cd build
+	cmake -DCMAKE_BUILD_TYPE=Coverage ..
+	make
+	make coverage doc cppcheck
+\endcode
+
+Debug build:
+\code
+	mkdir build
+	cd build
+	cmake -DCMAKE_BUILD_TYPE=Debug ..
+	make
+\endcode
+
+If you like to perform code coverage using the unit tests, do:
+\code
+	mkdir build
+	cd build
+	cmake -DCMAKE_BUILD_TYPE=Coverage ..
+	make
+	make coverage
+\endcode
+
+As packaging system, cpack is used. Do after build:
+\code
+	make package
+\endcode
+
+or for individual package types:
+
+\code
+	cpack -G TGZ
+	cpack -G DEB
+\endcode
+
+Build documentation:
+\code
+	mkdir build
+	cd build
+	cmake ..
+	make doc
+\endcode
+
+After proper building and execution:
+- [Code Coverage](../coverage/index.html)
+- [cppcheck](../cppcheck.txt)
+- [Doxygen Warnings](../doxygen-warnings.txt)
+
+
+\section sec_devenv_buildoptions Build Options
+The following build types (-DCMAKE_BUILD_TYPE=x) are possible:
+- Debug
+- Release
+- Coverage
+
+Build options:
+- `ENABLE_STATIC` : enables static build, if `OFF`, a shared library is being built.
+  Default: `ON`
+- `ENABLE_PROFILING` : enables profiling for `gprof`
+- `ENABLE_BENCHMARK` : enables benchmarking (disables some optimization)
+- `ENABLE_SANITIZER` : enables address and undefined sanitizers
+
+Components:
+- `ENABLE_EXAMPLES`: enables examples. Default: `ON`
+- `ENABLE_TOOLS`: enables tools. Default: `ON`
+- `ENABLE_TESTS`: enables unit tests, integration tests and benchmarks. Default: `ON`
+- `ENABLE_TESTS_BENCHMARK`: enables benchmark tests, enabled only if `ENABLE_TESTS` is also enabled. Default: `ON`
+
+
+\section sec_devenv_clang_static_analysis Static Analysis with Clang
+There is a script ```bin/static-analysis-clang``` for doing this, or do it manually:
+\code
+	mkdir build
+	cd build
+	cmake -DCMAKE_CXX_COMPILER=/usr/share/clang/scan-build-3.9/libexec/c++-analyzer ..
+	scan-build-3.9 -o doc/analysis --use-analyzer=/usr/bin/clang++-3.9 make
+\endcode
+
+After the build, ```scan-build``` will tell you what to do in order to inspect
+the findings.
+
+
+\section sec_devenv_benchmarks Perform Benchmarks
+Build in ```Release``` mode, perform individual benchmarks:
+\code
+	mkdir build
+	cd build
+	cmake -DCMAKE_BUILD_TYPE=Release ..
+	make -j 8
+	test/benchmark_nmea_split
+\endcode
+
+Using `perf` to do performance analysis:
+\code
+	mkdir build
+	cd build
+	cmake -DCMAKE_BUILD_TYPE=Release -DENABLE_BENCHMARK=ON ..
+	make -j 8
+	perf record -g test/benchmark_nmea_split
+	perf report -g 'graph,0.5,caller'
+\endcode
+
+*/

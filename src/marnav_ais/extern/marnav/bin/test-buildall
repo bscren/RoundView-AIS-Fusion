@@ -1,0 +1,69 @@
+#!/bin/bash -eu
+
+# builds all relevant configurations, executes tests
+
+export SCRIPT_BASE=$(dirname `readlink -f $0`)
+export BASE=${SCRIPT_BASE}/..
+export BUILD=${BASE}/build
+
+# ask system about number of processors, accept already specified number
+export NUM_PROC=${NUM_PROC:-$(cat /proc/cpuinfo | grep -E "^processor" | wc -l)}
+
+
+function prepare_build_dir()
+{
+	if [ -d ${BUILD} ] ; then
+		rm -fr ${BUILD}
+	fi
+	mkdir -p ${BUILD}
+}
+
+function log_result()
+{
+	result=$1
+	logfile=$2
+	if [ ${result} -eq 0 ] ; then
+		echo "SUCCESS" >> ${logfile}
+		echo -e " \033[32mSUCCESS\033[0m"
+	else
+		echo "FAILURE" >> ${logfile}
+		echo -e " \033[31mFAILURE\033[0m"
+	fi
+}
+
+function build_with_local_installation()
+{
+	for cfg in $(cmake --list-presets | grep "^\s*\"" | tr -d '"') ; do
+		echo -n "target: ${cfg} "
+		printf '%*s' $((45 - ${#cfg})) "" | tr ' ' '.'
+		set +e
+		cmake --preset ${cfg} &>${BUILD}/${cfg}.log && cmake --build --preset ${cfg} &>>${BUILD}/${cfg}.log
+		log_result $? ${BUILD}/${cfg}.log
+		set -e
+		rm -fr ${BUILD}/${cfg}
+	done
+}
+
+function build_with_docker()
+{
+	name=marnav
+	account=mariokonrad/
+
+	for dockerid in $(docker images ${account}${name} | grep -Ev "REPOSITORY" | sed -E 's/^([^[:space:]]+)\s+([^[:space:]]+)\s+.*$/\1:\2/' | sort -Vur) ; do
+		for build_type in Debug Release ; do
+			cfg=$(echo "${dockerid}_${build_type}" | tr '/:' '__')
+
+			echo -n "target: ${cfg} "
+			printf '%*s' $((45 - ${#cfg})) "" | tr ' ' '.'
+			set +e
+			BUILD_DIR=${BUILD}/${cfg} ${SCRIPT_BASE}/docker-build.sh "$(echo ${dockerid} | sed "s@${account}${name}:@@")" ${build_type} >&${BUILD}/${cfg}.log
+			log_result $? ${BUILD}/${cfg}.log
+			set -e
+			rm -fr ${BUILD}/${cfg}
+		done
+	done
+}
+
+prepare_build_dir
+build_with_local_installation
+build_with_docker

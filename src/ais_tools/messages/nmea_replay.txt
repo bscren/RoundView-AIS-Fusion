@@ -1,0 +1,462 @@
+header:
+  stamp:
+    sec: 1571144272
+    nanosec: 250957012
+  frame_id: nmea
+sentence: '!AIVDM,1,1,,B,15Nelv0000rt6BhHaVff498T20Rp,0*34'
+---
+header:
+  stamp:
+    sec: 1571144272
+    nanosec: 250977039
+  frame_id: nmea
+sentence: ''
+---
+header:
+  stamp:
+    sec: 1571144272
+    nanosec: 492253065
+  frame_id: nmea
+sentence: $GNRMC,125819.00,A,4304.31770,N,07042.72116,W,0.164,,151019,,,A*77
+---
+header:
+  stamp:
+    sec: 1571144272
+    nanosec: 492278099
+  frame_id: nmea
+sentence: ''
+---
+header:
+  stamp:
+    sec: 1571144272
+    nanosec: 522044897
+  frame_id: nmea
+sentence: $GNGGA,125819.00,4304.31770,N,07042.72116,W,1,09,1.01,4.7,M,-32.5,M,,*76
+---
+header:
+  stamp:
+    sec: 1571144272
+    nanosec: 522304058
+  frame_id: nmea
+sentence: ''
+---
+header:
+  stamp:
+    sec: 1571144272
+    nanosec: 522339105
+  frame_id: nmea
+sentence: $GNGLL,4304.31770,N,07042.72116,W,125819.00,A,A*60
+---
+header:
+  stamp:
+    sec: 1571144272
+    nanosec: 522347927
+  frame_id: nmea
+sentence: ''
+---
+header:
+  stamp:
+    sec: 1571144272
+    nanosec: 537790060
+  frame_id: nmea
+sentence: $GNGBS,125819.00,3.4,1.5,7.7,,,,*5A
+---
+header:
+  stamp:
+    sec: 1571144272
+    nanosec: 537803888
+  frame_id: nmea
+sentence: ''
+---
+header:
+  stamp:
+    sec: 1571144272
+    nanosec: 953742980
+  frame_id: nmea
+sentence: '!AIVDO,1,1,,,B5NvtG000fg4qJ6:ENWQ3waQl000,0*0E'
+---
+header:
+  stamp:
+    sec: 1571144272
+    nanosec: 953792095
+  frame_id: nmea
+sentence: ''
+---
+header:
+  stamp:
+    sec: 1571144273
+    nanosec: 513498067
+  frame_id: nmea
+sentence: $GNRMC,125820.00,A,4304.31768,N,07042.72115,W,0.042,,151019,,,A*72
+---
+header:
+  stamp:
+    sec: 1571144273
+    nanosec: 513523101
+  frame_id: nmea
+sentence: ''
+---
+header:
+  stamp:
+    sec: 1571144273
+    nanosec: 529434919
+  frame_id: nmea
+sentence: $GNGGA,125820.00,4304.31768,N,07042.72115,W,1,09,1.01,4.7,M,-32.5,M,,*76
+---
+header:
+  stamp:
+    sec: 1571144273
+    nanosec: 529789924
+  frame_id: nmea
+sentence: ''
+---
+header:
+  stamp:
+    sec: 1571144273
+    nanosec: 560468912
+  frame_id: nmea
+sentence: ''
+---
+header:
+  stamp:
+    sec: 1571144273
+    nanosec: 560614109
+  frame_id: nmea
+sentence: $GNGLL,4304.31768,N,07042.72115,W,125820.00,A,A*60
+---
+header:
+  stamp:
+    sec: 1571144273
+    nanosec: 560625076
+  frame_id: nmea
+sentence: ''
+---
+header:
+  stamp:
+    sec: 1571144273
+    nanosec: 560656070
+  frame_id: nmea
+sentence: $GNGBS,125820.00,3.4,1.5,7.7,,,,*50
+---
+header:
+  stamp:
+    sec: 1571144273
+    nanosec: 560663938
+  frame_id: nmea
+sentence: ''
+---
+header:
+  stamp:
+    sec: 1571144273
+    nanosec: 944298028
+  frame_id: nmea
+sentence: '!AIVDO,1,1,,,B5NvtG000>g4qJ6:ENWQ3wb1l000,0*35'
+---
+header:
+  stamp:
+    sec: 1571144273
+    nanosec: 944313049
+  frame_id: nmea
+sentence: ''
+---
+header:
+  stamp:
+    sec: 1571144274
+    nanosec: 472114086
+  frame_id: nmea
+sentence: $GNRMC,125821.00,A,4304.31764,N,07042.72114,W,0.033,,151019,,,A*78
+---
+header:
+  stamp:
+    sec: 1571144274
+    nanosec: 472134113
+  frame_id: nmea
+sentence: ''
+---
+header:
+  stamp:
+    sec: 1571144274
+    nanosec: 503207921
+  frame_id: nmea
+sentence: $GNGGA,125821.00,4304.31764,N,07042.72114,W,1,09,1.01,4.8,M,-32.5,M,,*75
+---
+header:
+  stamp:
+    sec: 1571144274
+    nanosec: 503505945
+  frame_id: nmea
+sentence: ''
+---
+header:
+  stamp:
+    sec: 1571144274
+    nanosec: 503540039
+  frame_id: nmea
+sentence: $GNGLL,4304.31764,N,07042.72114,W,125821.00,A,A*6C
+---
+header:
+  stamp:
+    sec: 1571144274
+    nanosec: 503547906
+  frame_id: nmea
+sentence: ''
+---
+header:
+  stamp:
+    sec: 1571144274
+    nanosec: 519296884
+  frame_id: nmea
+sentence: $GNGBS,125821.00,3.4,1.5,7.7,,,,*51
+---
+header:
+  stamp:
+    sec: 1571144274
+    nanosec: 519310951
+  frame_id: nmea
+sentence: ''
+---
+header:
+  stamp:
+    sec: 1571144274
+    nanosec: 950922966
+  frame_id: nmea
+sentence: '!AIVDO,1,1,,,B5NvtG000>g4qJV:ENSQ3wbQl000,0*31'
+---
+header:
+  stamp:
+    sec: 1571144274
+    nanosec: 950943946
+  frame_id: nmea
+sentence: ''
+---
+header:
+  stamp:
+    sec: 1571144274
+    nanosec: 998892068
+  frame_id: nmea
+sentence: '!AIVDM,1,1,,B,15MiOp0P00rtColHaFDBHOvb28<`,0*30'
+---
+header:
+  stamp:
+    sec: 1571144274
+    nanosec: 998912096
+  frame_id: nmea
+sentence: ''
+---
+header:
+  stamp:
+    sec: 1571144275
+    nanosec: 494792938
+  frame_id: nmea
+sentence: $GNRMC,125822.00,A,4304.31762,N,07042.72113,W,0.040,,151019,,,A*7E
+---
+header:
+  stamp:
+    sec: 1571144275
+    nanosec: 494827985
+  frame_id: nmea
+sentence: ''
+---
+header:
+  stamp:
+    sec: 1571144275
+    nanosec: 525801897
+  frame_id: nmea
+sentence: $GNGGA,125822.00,4304.31762,N,07042.72113,W,1,09,1.01,4.8,M,-32.5,M,,*77
+---
+header:
+  stamp:
+    sec: 1571144275
+    nanosec: 526083946
+  frame_id: nmea
+sentence: ''
+---
+header:
+  stamp:
+    sec: 1571144275
+    nanosec: 526123046
+  frame_id: nmea
+sentence: $GNGLL,4304.31762,N,07042.72113,W,125822.00,A,A*6E
+---
+header:
+  stamp:
+    sec: 1571144275
+    nanosec: 526132106
+  frame_id: nmea
+sentence: ''
+---
+header:
+  stamp:
+    sec: 1571144275
+    nanosec: 541702985
+  frame_id: nmea
+sentence: $GNGBS,125822.00,3.4,1.5,7.8,,,,*5D
+---
+header:
+  stamp:
+    sec: 1571144275
+    nanosec: 541721105
+  frame_id: nmea
+sentence: ''
+---
+header:
+  stamp:
+    sec: 1571144275
+    nanosec: 717751026
+  frame_id: nmea
+sentence: '!AIVDM,1,1,,A,403OKAAv>WdrFrt`nDHgiRg02H=3,0*21'
+---
+header:
+  stamp:
+    sec: 1571144275
+    nanosec: 717772960
+  frame_id: nmea
+sentence: ''
+---
+header:
+  stamp:
+    sec: 1571144275
+    nanosec: 941637992
+  frame_id: nmea
+sentence: '!AIVDO,1,1,,,B5NvtG000>g4qJV:ENSQ3wc1l000,0*50'
+---
+header:
+  stamp:
+    sec: 1571144275
+    nanosec: 941664934
+  frame_id: nmea
+sentence: ''
+---
+header:
+  stamp:
+    sec: 1571144276
+    nanosec: 469325065
+  frame_id: nmea
+sentence: $GNRMC,125823.00,A,4304.31761,N,07042.72111,W,0.022,,151019,,,A*7A
+---
+header:
+  stamp:
+    sec: 1571144276
+    nanosec: 469341039
+  frame_id: nmea
+sentence: ''
+---
+header:
+  stamp:
+    sec: 1571144276
+    nanosec: 501348972
+  frame_id: nmea
+sentence: $GNGGA,125823.00,4304.31761,N,07042.72111,W,1,09,1.01,4.6,M,-32.5,M,,*79
+---
+header:
+  stamp:
+    sec: 1571144276
+    nanosec: 501611948
+  frame_id: nmea
+sentence: ''
+---
+header:
+  stamp:
+    sec: 1571144276
+    nanosec: 501645088
+  frame_id: nmea
+sentence: $GNGLL,4304.31761,N,07042.72111,W,125823.00,A,A*6E
+---
+header:
+  stamp:
+    sec: 1571144276
+    nanosec: 501652002
+  frame_id: nmea
+sentence: ''
+---
+header:
+  stamp:
+    sec: 1571144276
+    nanosec: 517373085
+  frame_id: nmea
+sentence: $GNGBS,125823.00,3.4,1.5,7.8,,,,*5C
+---
+header:
+  stamp:
+    sec: 1571144276
+    nanosec: 517390012
+  frame_id: nmea
+sentence: ''
+---
+header:
+  stamp:
+    sec: 1571144276
+    nanosec: 949148893
+  frame_id: nmea
+sentence: '!AIVDO,1,1,,,B5NvtG000>g4qJV:ENSQ3wcQl000,0*30'
+---
+header:
+  stamp:
+    sec: 1571144276
+    nanosec: 949167013
+  frame_id: nmea
+sentence: ''
+---
+header:
+  stamp:
+    sec: 1571144277
+    nanosec: 493019104
+  frame_id: nmea
+sentence: $GNRMC,125824.00,A,4304.31760,N,07042.72109,W,0.152,,151019,,,A*73
+---
+header:
+  stamp:
+    sec: 1571144277
+    nanosec: 493035078
+  frame_id: nmea
+sentence: ''
+---
+header:
+  stamp:
+    sec: 1571144277
+    nanosec: 524346113
+  frame_id: nmea
+sentence: ''
+---
+header:
+  stamp:
+    sec: 1571144277
+    nanosec: 524473905
+  frame_id: nmea
+sentence: $GNGLL,4304.31760,N,07042.72109,W,125824.00,A,A*61
+---
+header:
+  stamp:
+    sec: 1571144277
+    nanosec: 524485111
+  frame_id: nmea
+sentence: ''
+---
+header:
+  stamp:
+    sec: 1571144277
+    nanosec: 524506092
+  frame_id: nmea
+sentence: $GNGBS,125824.00,3.5,1.5,7.8,,,,*5A
+---
+header:
+  stamp:
+    sec: 1571144277
+    nanosec: 524511098
+  frame_id: nmea
+sentence: ''
+---
+header:
+  stamp:
+    sec: 1571144277
+    nanosec: 554917097
+  frame_id: nmea
+sentence: '!AIVDM,1,1,,B,ENk`sl>`@@@@@@@@@@@@@@@@@@@=OTgJ<LwrP00003vP000,2*2D'
+---
+header:
+  stamp:
+    sec: 1571144277
+    nanosec: 554934024
+  frame_id: nmea
+sentence: ''
+---

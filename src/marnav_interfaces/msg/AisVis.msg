@@ -1,0 +1,11 @@
+string camname
+uint64 mmsi
+float64 lon
+float64 lat
+float64 speed
+float64 course
+float64 heading
+uint8 type
+builtin_interfaces/Time timestamp
+int32 x
+int32 y

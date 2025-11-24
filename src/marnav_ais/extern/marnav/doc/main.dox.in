@@ -1,0 +1,57 @@
+/**
+
+\mainpage Library for MARitime NAVigation
+\version @PROJECT_VERSION@ (@GIT_BRANCH@ / @GIT_COMMIT_HASH@)
+\copyright (c) 2022 Mario Konrad \<mario.konrad@gmx.net\>
+
+\tableofcontents
+
+\section toc Table of Contents
+- \ref abstract
+- \ref goals
+- \ref links
+- \ref license
+- \ref page_examples
+- \ref development_environment
+- \ref technical_overview
+
+\section abstract Abstract
+This is a C++17 library for maritime navigation purposes.
+It supports (partially):
+- \ref features_nmea
+- \ref features_ais
+- \ref features_seatalk
+- Reading data from serial ports (NMEA, SeaTalk)
+- Basic geodesic functions, suitable for martime navigation.
+  - Calculation of CPA (closest point of approach)
+    and TCPA (time to closest point of approach)
+  - Distance of two points on a sphere
+  - Distance of two points on an ellipsoid using formula of Vincenty
+  - Distance of two points on an ellipsoid using formula of Lambert
+
+
+\section goals Goals
+There are already implementaions for reading and writing NMEA-0183 or AIS.
+The goal of this library is
+- to have an implementation in modern C++
+- easy to use API (std lib like, integrating well)
+- unit tested (high test coverage)
+- trivial integration into projects (liberal license, as few dependencies as possible)
+- (more or less) well documented
+- having fun
+
+
+\section sec_authors Authors
+(extracted from git repository, sorted alphabetically)
+@AUTHOR_LIST@
+
+
+\section license License
+\note The official NMEA 0183 Standard document is not available for free. It was not
+      consulted at any point during the development of this library. All information
+      was found from free sources on the internet. This library (especially the NMEA
+      part) is not derivative work of this standard.
+
+\include LICENSE
+
+*/

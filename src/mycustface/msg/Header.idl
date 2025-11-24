@@ -1,0 +1,9 @@
+module mycustface {
+module msg {
+  struct Header {
+  long timestamp;
+  string id;
+};
+};
+};
+

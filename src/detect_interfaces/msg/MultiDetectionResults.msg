@@ -1,0 +1,3 @@
+string camera_name
+builtin_interfaces/Time stamp
+detect_interfaces/DetectionResult[] results

@@ -1,0 +1,212 @@
+拷贝到home目录下
+marnav库用于AIS的解析
+marnavOK库的安装：
+	cd marnavOK\marnav-master
+	mkdir build && cd build
+	cmake ..
+	make -j8
+	sudo make install
+
+	简单使用方法如下：	
+	工程添加： LIBS +=  -lmarnav 
+	代码
+		1 、添加包含文件
+		#include <marnav/nmea/nmea.hpp>
+		#include <marnav/nmea/ais_helper.hpp>
+		#include <marnav/ais/ais.hpp>
+		#include <marnav/ais/message_01.hpp>
+		#include <marnav/ais/message_05.hpp>
+		#include <marnav/nmea/angle.hpp>
+		#include <marnav/nmea/nmea.hpp>
+		#include <marnav/nmea/rmc.hpp>  //针对rmc
+		#include <marnav/nmea/gga.hpp>	//针对gga
+		#include <marnav/nmea/vtg.hpp>	//针对vtg
+		#include <marnav/nmea/gsa.hpp>	//针对gsa
+		#include <marnav/nmea/gsv.hpp>	//针对gsv
+		
+		
+		2.代码
+		int main(int, char **)
+		{
+			using namespace marnav;
+			
+			marnav_example::sentence_reader reader;			
+			std::vector<std::unique_ptr<nmea::sentence>> sentences;
+			std::string raw_sentence;			
+			while (reader.read_sentence(raw_sentence)) {
+				auto nmea_sentence = nmea::make_sentence(raw_sentence);				
+				if (nmea_sentence->id() == nmea::sentence_id::VDM) {					
+					const auto vdm = nmea::sentence_cast<nmea::vdm>(nmea_sentence.get());
+					const auto n_fragments = vdm->get_n_fragments();
+					const auto fragment = vdm->get_fragment();
+					sentences.push_back(std::move(nmea_sentence));
+					if (fragment == n_fragments) {
+						marnav_example::process_ais_message(sentences);
+						sentences.clear();
+					}
+				} else {
+					std::cout << nmea_sentence->tag() << ": ignored\n";
+				}
+			}
+		}
+		
+		具体使用，请查看JHDev\marnavOK\marnav-master\examples\下的文件
+				头文件：请查看JHDev\marnavOK\marnav-master\include\marnav\nmea\
+	
+
+geographiclib  用于测地线计算;地理坐标、UTM、UPS、MGRS、地心坐标和局部笛卡尔坐标之间的转换
+	geographiclib库的安装
+	cd geographiclib-2.5
+	mkdir build && cd build
+	cmake ..
+	make -j4
+	sudo make install
+
+	使用方法
+
+	工程添加：LIBS += -lmarnav -lGeographicLib
+
+	代码
+	1 、添加包含文件
+	#include <GeographicLib/Geodesic.hpp>
+	using namespace GeographicLib;
+
+
+	2.编写
+ 	const Geodesic& geod = Geodesic::WGS84();
+    	// Distance from JFK to LHR
+    	double
+        		lat1 = 40.6, lon1 = -73.8, //第一个点的经纬度
+        		lat2 = 51.6, lon2 = -0.5;//第一个点的经纬度
+    		double s12,a1,a2; 
+		//s12 距离，
+		//a1 点1基准方位角  方位角是从某点的指北方向线起，依顺时针方向到目标方向线之间的水平夹角
+ 		geod.Inverse(lat1, lon1, lat2, lon2, s12,a1,a2); //进行计算
+
+
+
+marnav和geographiclib案例参考使用，基于c++,可以参考JHDev\JHDevComm\kdevcomm\parser中的AISParser.cpp和AISParser.h
+	
+	具体使用地方：
+        if (nmea_sentence->id() == nmea::sentence_id::VDM) { //VDM AIS船舶自动识别系统
+
+            // since AIS messages may be splitted up in several VDM sentences,
+            // we have to collect them. this is a very simple implementation
+            // and does not check for sequence or overlapping of messages.
+            // it simply assumes all necessary messages are subsequent.
+            // there is simply a check, whether or not all parts have arrived.
+            const auto vdm = nmea::sentence_cast<nmea::vdm>(nmea_sentence.get()); //功能：将通用的 NMEA 句子指针转换为vdm类型的指针。 sentence_cast类似于 C++ 的dynamic_cast，用于获取 VDM 句子的具体接口，以便访问其特有的成员函数（如片段数量、 payload 等）。
+            const auto n_fragments = vdm->get_n_fragments(); //功能：获取当前 AIS 消息被拆分的总片段数。
+            const auto fragment = vdm->get_fragment(); //获取当前 VDM 句子的片段编号（从 1 开始）。
+
+            //qDebug()<<"n_fragments:"<<n_fragments<<"fragment"<<fragment;
+
+            // collect sentence
+            sentences.push_back(std::move(nmea_sentence)); //将当前 VDM 句子添加到sentences向量中，用于收集所有片段。
+            // check if all necessary sentences have arrived and if they have,
+            // process the AIS message.
+
+            if (fragment == n_fragments) {           //当前片段编号等于总片段数时，意味着所有拆分的 VDM 句子已收集完成
+                // parse and and process AIS messags
+                auto payload = nmea::collect_payload(sentences.begin(), sentences.end()); //功能：去除 NMEA 协议的包装，得到 AIS 消息的原始二进制数据,从收集的 VDM 句子中提取并合并 AIS 消息的有效载荷（payload）。它将所有片段的 payload 拼接成一个完整的字符串，便于后续解析。
+                try {
+                    auto message = ais::make_message(payload); //功能：根据提取的 AIS 消息有效载荷创建一个 AIS 消息对象。它会解析 payload 并返回一个对应的 ais::message 指针，表示具体的 AIS 消息类型（如位置报告、静态数据等）。
+
+                    if(  message->type() == ais::message_id::position_report_class_a){ //判断 AIS 消息类型是否为 “Class A 位置报告”（类型 1）。这是 AIS 中最常见的消息类型之一，包含船舶的实时动态信息（如位置、航速、航向等）。
+                        auto report = ais::message_cast<ais::message_01>(message);
+                        result["type"] = "position_report_class_a";
+                        result["mmsi"] = (uint32_t)report->get_mmsi(); //
+                        result["longtitude"]=report->get_lon().value().get();
+                        result["latitude"]=report->get_lat().value().get();
+                        result["cog"] = report->get_cog().value();//course over ground
+                        result["sog"] = report->get_sog().value().value(); //speed;
+                        result["hdg"] = report->get_hdg().value(); //heading
+                        result["timestamp"] = report->get_timestamp();
+                        result["navstatus"] =(int)report->get_nav_status();//航行状态
+                        result["radiostatus"] = report->get_radio_status();//无线电状态
+
+		//geographiclib start
+
+                        double rmLong=report->get_lon().value().get(); //目标船舶经度
+                        double rmLatitude=report->get_lat().value().get(); //目标船舶纬度
+                        const Geodesic& geod = Geodesic::WGS84(); //使用WGS84坐标系
+                        double s12,a1,a2;
+                        //qDebug()<<"-----------localLat:"<<localLat<<"localLon:"<<localLon<<"rmLong:"<<rmLong<<"rmLatitude:"<<rmLatitude;
+                        geod.Inverse(localLat,localLon,rmLatitude,rmLong,s12,a1,a2); //// 计算本地位置（localLat, localLon）与目标船舶位置的距离和方位角
+
+
+                        result["s12"]=s12;
+                        result["a1"]=a1;
+                        result["a2"]=a2;
+
+		//geographiclib end
+
+                        //qDebug() << "AIS: Position report class A\n";
+                    }
+                    // 其他类型的AIS消息处理
+                    else if(  message->type() ==  ais::message_id::position_report_class_a_assigned_schedule){
+                        //auto report = ais::message_cast<ais::message_02>(message);
+                        qDebug() << "AIS: Position report class A (assigned schedule)\n";
+                        //break;
+                    }else if(  message->type() ==  ais::message_id::position_report_class_a_response_to_interrogation){
+                        //auto report = ais::message_cast<ais::message_03>(message);
+                        qDebug()  << "AIS: Position report class A (response to interrogation)\n";
+                    }else if(  message->type() == ais::message_id::base_station_report){
+                        //auto report = ais::message_cast<ais::message_04>(message);
+                        qDebug()  << "AIS: Base Station Report\n";
+                    }else if(  message->type() == ais::message_id::static_and_voyage_related_data){
+                        qDebug()  << "AIS: Static and voyage related data\n";
+                        auto report = ais::message_cast<ais::message_05>(message);
+                        result["type"] = "static_and_voyage_related_data";
+                        result["mmsi"] = (uint32_t)report->get_mmsi();
+                        result["shipname"] = report->get_shipname().data();
+                        result["callsign"] = report->get_callsign().data();
+
+                    }else if(  message->type() == ais::message_id::utc_and_date_inquiry){
+                        //auto report = ais::message_cast<ais::message_10>(message);
+                        qDebug()  << "AIS: UTC/Date Inquiry\n";
+                    }else if(  message->type() == ais::message_id::utc_and_date_response){
+                        //auto report = ais::message_cast<ais::message_11>(message);
+                        qDebug() << "AIS: UTC/Date Response\n";
+                    }else if(  message->type() == ais::message_id::standard_class_b_cs_position_report){
+                        //auto report = ais::message_cast<ais::message_18>(message);
+                        qDebug() << "AIS: Standard class B CS position report\n";
+                    }else if(  message->type() == ais::message_id::extended_class_b_equipment_position_report){
+                        //auto report = ais::message_cast<ais::message_19>(message);
+                        qDebug() << "AIS: Extended class B equipment position report\n";
+                    }else if(  message->type() == ais::message_id::aid_to_navigation_report){
+                        //auto report = ais::message_cast<ais::message_21>(message);
+                        qDebug()  << "AIS: Aid-to-Navigation report\n";
+                    }else if(  message->type() ==ais::message_id::static_data_report){
+                        //auto report = ais::message_cast<ais::message_24>(message);
+                        qDebug() << "AIS: Static Data Report\n";
+
+                    }else{
+                        // ignore all others
+                        ;
+
+                    }
+
+                } catch (ais::unknown_message & e) {
+                    //std::cout << "AIS unknown: " << e.what() << "\n";
+                    qDebug()<<e.what();
+                    sentences.clear();
+                    return result;
+                } catch (std::invalid_argument & e) {
+                    //std::cout << "AIS error: " << e.what() << "\n";
+                    qDebug()<<e.what();
+                    sentences.clear();
+                    return result;
+                }
+                sentences.clear();
+            }
+
+        }
+    
+
+
+
+
+
+
+

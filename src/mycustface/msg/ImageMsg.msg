@@ -1,0 +1,2 @@
+string image_name
+sensor_msgs/Image image

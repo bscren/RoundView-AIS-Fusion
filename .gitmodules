@@ -1,0 +1,3 @@
+[submodule "src/image_pipeline"]
+	path = src/image_pipeline
+	url = https://github.com/ros-perception/image_pipeline
