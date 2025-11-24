@@ -1,0 +1,68 @@
+// PYTHON 调试配置
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "ROS2: Assemble Launch",
+            "type": "ros2",
+            "request": "launch",
+            "target": "/home/tl/RV/src/marnav_vis/launch/Assemble_launch.py",
+            "subProcess": true  // 在子进程中运行
+        },
+        {
+            "name": "ROS2 Python Launch Debug",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/marnav_vis/marnav_vis/DeepSORVF_ros_v2.py",
+            "console": "integratedTerminal"
+        }
+    ]
+}
+// C++ 调试配置
+// {
+//     "version": "0.2.0",
+//     "configurations": [
+//         {
+//             "name": "ROS2 Launch Debug",
+//             "type": "cppdbg",
+//             "request": "launch",
+//             "program": "${workspaceFolder}/install/image_stitching_pkg/lib/image_stitching_pkg/JH_stitch",
+//             "args": [
+//                 // "/rtsp_image_0",
+//                 // "/rtsp_image_1",
+//                 // "/rtsp_image_2"
+//             ],
+//             "stopAtEntry": false,
+//             "cwd": "${workspaceFolder}",
+//             "environment": [
+//                 {
+//                     "name": "ROS_PACKAGE_PATH",
+//                     "value": "${workspaceFolder}/src:${env:ROS_PACKAGE_PATH}"
+//                 },
+//                 {
+//                     "name": "PYTHONPATH",
+//                     "value": "${workspaceFolder}/install/image_stitching_pkg/lib/python3.10/site-packages:${env:PYTHONPATH}"
+//                 },
+//                 {
+//                     "name": "LD_LIBRARY_PATH",
+//                     "value": "${workspaceFolder}/install/image_stitching_pkg/lib:${env:LD_LIBRARY_PATH}"
+//                 }
+//             ],
+//             "externalConsole": false,
+//             "MIMode": "gdb",
+//             "setupCommands": [
+//                 {
+//                     "description": "Enable pretty-printing for gdb",
+//                     "text": "-enable-pretty-printing",
+//                     "ignoreFailures": true
+//                 }
+//             ],
+//             "preLaunchTask": "colcon build",  // 调试前自动编译
+//             "miDebuggerPath": "/usr/bin/gdb",
+//             "logging": {
+//                 "moduleLoad": false,
+//                 "trace": true
+//             }
+//         }
+//     ]
+// }

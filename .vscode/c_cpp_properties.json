@@ -1,0 +1,29 @@
+{
+    "configurations": [
+        {
+            "browse": {
+                "databaseFilename": "${default}",
+                "limitSymbolsToIncludedHeaders": false
+            },
+            "includePath": [
+                "/opt/ros/humble/include/**",
+                "/home/tl/RV/src/image_stitching_pkg/include/**",
+                "/usr/include/**",
+                "/usr/local/include/**",
+                "/usr/local/include/opencv4/**",
+                "/home/tl/RV/install/detect_interfaces/include/**",
+                "/home/tl/RV/install/mycustface/include/**",
+                "/home/tl/RV/install/marnav_interfaces/include/**",
+                "/home/tl/RV/src/marnav_ais/extern/marnav/include/**",
+                "/usr/include/serial/**"
+
+            ],
+            "name": "ROS",
+            "intelliSenseMode": "gcc-x64",
+            "compilerPath": "/usr/bin/gcc",
+            "cStandard": "gnu11",
+            "cppStandard": "c++17"
+        }
+    ],
+    "version": 4
+}
