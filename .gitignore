@@ -1,0 +1,8 @@
+ais_logs/
+build/
+install/
+log/
+methodsCompare/
+result/
+ROS2BAG/
+VideonImage/
