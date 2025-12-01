@@ -87,7 +87,7 @@ def generate_launch_description():
     # DeepSORVF_ros_v节点
     deep_sorvf_node = Node(
         package='marnav_vis',  # 替换为实际包名
-        executable='DeepSORVF',  # 替换为setup.py中配置的可执行文件名
+        executable='DeepSORVF_ros',  # 替换为setup.py中配置的可执行文件名
         name='ais_vis_node',
         output='screen'
         # 该节点无额外参数，无需配置parameters

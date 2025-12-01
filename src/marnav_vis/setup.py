@@ -45,7 +45,7 @@ setup(
     entry_points={
         'console_scripts': [
             'DeepSORVF = marnav_vis.DeepSORVF_ros_v1:main',
-            'DeepSORVF_ros = marnav_vis.DeepSORVF_ros_v6:main',
+            'DeepSORVF_ros = marnav_vis.DeepSORVF_ros_v7:main',
             'ais_csv_pub_node = marnav_vis.ais_csv_pub:main',
             'ais_sorted_pub_node = marnav_vis.ais_sorted_pub:main',
             'camera_pub_node = marnav_vis.camera_pub:main',

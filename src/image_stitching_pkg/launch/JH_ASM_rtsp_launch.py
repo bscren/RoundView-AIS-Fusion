@@ -50,11 +50,11 @@ def generate_launch_description():
             'max_focal_variance': 50000.0, # 最大焦距方差
             'y_tolerance': 200.0, # 拼接图像间的y轴容差
             'roi_threshold': 0.95, # ROI阈值
-            'detect_confidence': 0.4, # 检测置信度
+            'detect_confidence': 0.05, # 检测置信度
             'iou_threshold': 0.1, # IOU阈值
             'scale': 0.5, # 图像缩放比例
             'cropornot': True, # 是否裁剪全景图
-            'drawboxornot': False, # 是否绘制检测框
+            'drawboxornot': True, # 是否绘制检测框
             'save_CameraParams': False, # 是否保存相机K R T参数
             "save_CameraParams_path": "/home/tl/RV/src/image_stitching_pkg/config/CameraParams_SiteTest.yaml",
             'use_saved_CameraParams': True # 是否使用已保存的相机K R T参数

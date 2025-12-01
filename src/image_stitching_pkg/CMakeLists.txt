@@ -72,14 +72,14 @@ set(CUDA_LIBS cudart)
 
 
 # 可执行文件配置
-## 1. 离线拼接测试节点（image_stitching_node_4_offline.cpp）
+## 1. 离线拼接测试节点
 add_executable(image_stitching_node 
-  src/image_stitching_node_5_cuda_2.cpp
+  src/module_stitchfunction_test.cpp
 )  # 补充闭合括号
 
-## 2. RTSP实时拼接节点（rtsp_stitch.cpp）
+## 2. RTSP实时拼接节点
 add_executable( stitch
-  src/topic_stitch_mulprocess_v4_speacialmsg.cpp
+  src/module_test_rtsp_stitch.cpp
 )  # 补充闭合括号
 
 ## 3. RTSP实时显示视频流节点（JH_rtsp.cpp）

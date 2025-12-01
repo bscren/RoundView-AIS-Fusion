@@ -96,7 +96,7 @@ class AisVisNode(Node):
         )
 
         self.ais_start_timestamp = self.get_parameter('ais_start_timestamp').get_parameter_value().integer_value
-        self.im_shape = tuple(self.get_parameter('width_height').get_parameter_value().integer_array_value)
+        self.im_shape = tuple[int, ...](self.get_parameter('width_height').get_parameter_value().integer_array_value)
         self.camera_topics = self.get_parameter('camera_topics').get_parameter_value().string_array_value
         self.aisbatch_topic = self.get_parameter('aisbatch_topic').get_parameter_value().string_value
         self.gnss_topic = self.get_parameter('gnss_topic').get_parameter_value().string_value
