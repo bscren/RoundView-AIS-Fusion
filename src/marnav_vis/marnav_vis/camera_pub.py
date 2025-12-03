@@ -48,7 +48,7 @@ class CameraPubNode(Node):
         )
         self.image_publisher = self.create_publisher(
             Image, 
-            'camera_image_topic', 
+            '/camera_image_topic', 
             # 10
             qos_profile
             )

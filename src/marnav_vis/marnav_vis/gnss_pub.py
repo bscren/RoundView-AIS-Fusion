@@ -28,7 +28,7 @@ class GnssPublisher(Node):
         # 2. 创建发布者
         self.publisher_ = self.create_publisher(
             Gnss,
-            'gnss_topic',  # 发布话题名称
+            '/gnss_topic',  # 发布话题名称
             10  # 队列大小
         )
         

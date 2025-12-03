@@ -29,7 +29,9 @@ JHStitcher::JHStitcher(
     bool drawboxornot,
     bool save_CameraParams,
     string save_CameraParams_path,
-    bool use_saved_CameraParams
+    bool use_saved_CameraParams,
+    double FOV_hor,
+    double FOV_ver
 ):  
     cam_name_to_idx_(cam_name_to_idx),
     refresh_time_(refresh_time),
@@ -46,7 +48,9 @@ JHStitcher::JHStitcher(
     drawboxornot_(drawboxornot),
     save_CameraParams_(save_CameraParams),
     save_CameraParams_path_(save_CameraParams_path),
-    use_saved_CameraParams_(use_saved_CameraParams)
+    use_saved_CameraParams_(use_saved_CameraParams),
+    FOV_hor_(FOV_hor),
+    FOV_ver_(FOV_ver)
 
     {
     latest_warp_images_32F.resize(3);
@@ -692,6 +696,8 @@ void JHStitcher::saveCameraParamters(const std::string& filename, const std::vec
     fs << "cameras" << "[";
     for (const auto& cam : cameras) {
         fs << "{";
+        fs << "FOV_hor" << FOV_hor_;
+        fs << "FOV_ver" << FOV_ver_;
         fs << "focal" << cam.focal; 
         fs << "aspect" << cam.aspect;// 宽高比
         fs << "ppx" << cam.ppx;

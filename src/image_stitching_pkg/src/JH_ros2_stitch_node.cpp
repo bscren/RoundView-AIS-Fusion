@@ -15,6 +15,9 @@
 #include "mycustface/msg/j_hjpg.hpp"
 #include "mycustface/msg/header.hpp"
 
+// 服务头文件
+#include "detect_interfaces/srv/get_camera_params.hpp"
+
 #include "JHstitcher.hpp"
 #include <mutex>
 #include <shared_mutex>
@@ -25,9 +28,11 @@ using namespace std;
 using namespace sensor_msgs::msg;
 using namespace message_filters;
 
-// 消息类型别名
+// 消息类型别名和服务类型别名
 using MultiDetectionsCamerasMsg = detect_interfaces::msg::MultiDetectionsCameras;
 using MultiDetectionResultsMsg = detect_interfaces::msg::MultiDetectionResults;
+using JHjpgMsg = mycustface::msg::JHjpg;
+using GetCameraParamsSrv = detect_interfaces::srv::GetCameraParams;
 
 class JHRos2StitchNode : public rclcpp::Node {
 public:
@@ -59,7 +64,9 @@ public:
             this->declare_parameter("drawboxornot",true),
             this->declare_parameter("save_CameraParams",false),
             this->declare_parameter("save_CameraParams_path","/home/tl/RV/src/image_stitching_pkg/config/CameraParams.yaml"),
-            this->declare_parameter("use_saved_CameraParams",true)
+            this->declare_parameter("use_saved_CameraParams",true),
+            this->declare_parameter("FOV_hor",105.0),
+            this->declare_parameter("FOV_ver",57.0)
         );
 
         // 在节点中检查参数
@@ -102,7 +109,7 @@ public:
             callback_group_);
 
         // 初始化发布器
-        stitched_pub_ = this->create_publisher<mycustface::msg::JHjpg>("image_topic_all", 10);
+        stitched_pub_ = this->create_publisher<JHjpgMsg>("image_topic_all", 10);
 
         // 初始化监控发布超时的定时器
         watchdog_pub_timeout = this->declare_parameter("publish_timeout", 5); // 默认5秒
@@ -110,6 +117,13 @@ public:
             std::chrono::seconds(10), // 每30秒检查一次
             std::bind(&JHRos2StitchNode::check_publish_timeout, this),
             callback_group_);   
+
+        // 创建获取相机参数服务
+        get_camera_params_srv_ = this->create_service<GetCameraParamsSrv>(
+            "get_camera_params",
+            std::bind(&JHRos2StitchNode::getCameraParamsCallback, this,
+                      std::placeholders::_1, std::placeholders::_2)
+        );
 
              // 新增：读取超时阈值参数（默认5秒，可在launch或参数文件中配置）
     // watchdog_pub_timeout = this->declare_parameter("publish_timeout", 5);
@@ -143,7 +157,8 @@ private:
     std::shared_ptr<Subscriber> img1_sub_, img2_sub_, img3_sub_;
     std::shared_ptr<message_filters::Synchronizer<SyncPolicy>> sync_;
     rclcpp::Subscription<MultiDetectionsCamerasMsg>::SharedPtr yolo_sub_;
-    rclcpp::Publisher<mycustface::msg::JHjpg>::SharedPtr stitched_pub_;
+    rclcpp::Publisher<JHjpgMsg>::SharedPtr stitched_pub_;
+    rclcpp::Service<GetCameraParamsSrv>::SharedPtr get_camera_params_srv_;
     rclcpp::TimerBase::SharedPtr stitch_timer_;
 
     // 状态变量
@@ -332,7 +347,7 @@ private:
         stitched_8u = stitched_8u(cv::Rect(0,0,stitched_image.cols,stitched_image.rows*6/7));
 
         // 1. 构建自定义消息对象
-        mycustface::msg::JHjpg jh_msg;
+        JHjpgMsg jh_msg;
 
         // 2. 填充header1字段（自定义Header）
         mycustface::msg::Header custom_header;
@@ -407,6 +422,7 @@ private:
         // cout<<"完成了一次JHmessagetoJson"<<endl;
     }
 
+
     void check_publish_timeout() {
         cout<<"进了check_publish_timeout"<<endl;
         // 若从未发布过消息（初始状态），直接返回
@@ -436,7 +452,44 @@ private:
         }
     }
 
+    // 获取相机参数服务回调
+    void getCameraParamsCallback(
+        const std::shared_ptr<detect_interfaces::srv::GetCameraParams::Request> request,
+        std::shared_ptr<detect_interfaces::srv::GetCameraParams::Response> response)
+    {
+        // 查找相机索引
+        auto cam_name = request->camera_name;
+        int cam_idx = -1;
+        if (stitcher_) {
+            const auto& cam_map = stitcher_->getCamNameToIdx();
+            if (cam_map.count(cam_name)) {
+                cam_idx = cam_map.at(cam_name);
+            }
+        }
+        if (cam_idx < 0 || !stitcher_) {
+            response->success = false;
+            return;
+        }
 
+        // 获取 TransformationData
+        const auto& data = stitcher_->getTransformationData();
+        if (cam_idx >= data.cameras.size()) {
+            response->success = false;
+            return;
+        }
+        const auto& cam = data.cameras[cam_idx];
+        response->fov_hor = stitcher_->getFOVHor(); // 单位: degree
+        response->fov_ver = stitcher_->getFOVVer(); // 单位: degree
+        response->success = true;
+        response->focal = cam.focal;
+        response->aspect = cam.aspect;
+        response->ppx = cam.ppx;
+        response->ppy = cam.ppy;
+        for (int i = 0; i < 9; ++i) response->rotate_matrix[i] = cam.R.at<float>(i / 3, i % 3);
+        for (int i = 0; i < 3; ++i) response->transport_matrix[i] = cam.t.at<double>(i, 0);
+        cv::Mat K = cam.K();
+        for (int i = 0; i < 9; ++i) response->k_matrix[i] = K.at<double>(i / 3, i % 3);
+    }
 };
 
 int main(int argc, char * argv[]) {

@@ -1,0 +1,15 @@
+# 请求：触发后依据相机ID获取
+string camera_name          # 相机ID，如"rtsp_image_0"、"rtsp_image_1"等
+---
+# 响应：返回所有相机的内外参数
+bool success                  # 是否成功获取参数
+# 每个相机的参数（内参矩阵K、旋转矩阵R、平移向量T等，以config文件中的yaml为准）
+float64 fov_hor                 # 水平视场角
+float64 fov_ver                 # 垂直视场角
+float64 focal                  # 焦距
+float64 aspect                 # 纵横比
+float64 ppx                    # 主点横坐标
+float64 ppy                    # 主点纵坐标
+float64[9] rotate_matrix                 # 旋转矩阵，按行优先顺序展开
+float64[3] transport_matrix              # 平移向量
+float64[9] k_matrix                      # 内参矩阵，按行优先顺序展开

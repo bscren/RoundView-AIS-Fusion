@@ -21,7 +21,7 @@ class CameraSubNode(Node):
             history=QoSHistoryPolicy.KEEP_LAST,
             depth=3
         )
-        self.image_subscriber = self.create_subscription(Image, 'camera_image_topic', self.image_callback, qos_profile)
+        self.image_subscriber = self.create_subscription(Image, '/camera_image_topic', self.image_callback, qos_profile)
 
     def image_callback(self, msg):
         # get .header.stamp

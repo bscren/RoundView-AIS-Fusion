@@ -20,7 +20,8 @@ setup(
         'deep_sort.deep_sort.sort',
         'deep_sort.utils', 
         'utils',
-        'utils_backup'
+        'utils_backup',
+        'utils_JH'
     ],
     data_files=[
         ('share/ament_index/resource_index/packages',
@@ -45,13 +46,15 @@ setup(
     entry_points={
         'console_scripts': [
             'DeepSORVF = marnav_vis.DeepSORVF_ros_v1:main',
-            'DeepSORVF_ros = marnav_vis.DeepSORVF_ros_v7:main',
+            'DeepSORVF_ros = marnav_vis.DeepSORVF_ros_v6:main',
+            'DeepSORVF_JH = marnav_vis.DeepSORVF_ros_v7:main',
             'ais_csv_pub_node = marnav_vis.ais_csv_pub:main',
             'ais_sorted_pub_node = marnav_vis.ais_sorted_pub:main',
             'camera_pub_node = marnav_vis.camera_pub:main',
             'camera_sub_node = marnav_vis.camera_sub:main',
             'camera_pub_temporary_Test_node = marnav_vis.camera_pub_temporary_Test:main',
             'gnss_pub_node = marnav_vis.gnss_pub:main',
+            'mul_process_test_node = marnav_vis.mul_process_test:main',
         ],
     },
 )

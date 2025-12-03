@@ -30,7 +30,7 @@ class AisBatchPublisher(Node):
         # 订阅原始AIS单条消息
         self.subscription = self.create_subscription(
             Ais,
-            'ais_csv_topic',  # 订阅原始话题
+            '/ais_csv_topic',  # 订阅原始话题
             self.ais_callback,
             10  # 队列大小
         )
@@ -38,7 +38,7 @@ class AisBatchPublisher(Node):
         # 创建批量数据发布者
         self.batch_publisher = self.create_publisher(
             AisBatch,
-            'ais_batch_topic',  # 新的批量数据话题
+            '/ais_batch_topic',  # 新的批量数据话题
             10
         )
         

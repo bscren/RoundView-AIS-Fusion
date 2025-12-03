@@ -53,21 +53,21 @@ class CameraPubNode(Node):
             history=QoSHistoryPolicy.KEEP_LAST,
             depth=5  # 减小队列深度
         )
+        self.image_publisher_0 = self.create_publisher(
+            Image, 
+            '/camera_image_topic_0', 
+            # 10
+            qos_profile
+            )
         self.image_publisher_1 = self.create_publisher(
             Image, 
-            'camera_image_topic_1', 
+            '/camera_image_topic_1', 
             # 10
             qos_profile
             )
         self.image_publisher_2 = self.create_publisher(
             Image, 
-            'camera_image_topic_2', 
-            # 10
-            qos_profile
-            )
-        self.image_publisher_3 = self.create_publisher(
-            Image, 
-            'camera_image_topic_3', 
+            '/camera_image_topic_2', 
             # 10
             qos_profile
             )
@@ -106,30 +106,34 @@ class CameraPubNode(Node):
         # frame_2 = frame[0:height, third_width:2*third_width]
         # frame_3 = frame[0:height, 2*third_width:width]
         # frame = cv2.resize(frame, (self.width, self.height))
+        frame_0 = frame
         frame_1 = frame
         frame_2 = frame
-        frame_3 = frame
 
         # 发布图像消息
         # 2. 为每个相机生成独立的随机噪音（整数，单位：纳秒）
         #    范围：[-noise_range_ns, noise_range_ns]
+        noise_0 = np.random.randint(-self.noise_range_ns, self.noise_range_ns + 1)
         noise_1 = np.random.randint(-self.noise_range_ns, self.noise_range_ns + 1)
         noise_2 = np.random.randint(-self.noise_range_ns, self.noise_range_ns + 1)
-        noise_3 = np.random.randint(-self.noise_range_ns, self.noise_range_ns + 1)
 
         # 3. 计算原始时间戳的总纳秒数（self.camera_microtimestamp是毫秒，需转纳秒）
         original_total_ns = int(self.camera_microtimestamp * 1000000)  # 1毫秒 = 1e6纳秒
 
         # 4. 为每个相机添加噪音，得到带抖动的总纳秒数
+        total_ns_0 = original_total_ns + noise_0
         total_ns_1 = original_total_ns + noise_1
         total_ns_2 = original_total_ns + noise_2
-        total_ns_3 = original_total_ns + noise_3
 
+        image_msg_0 = self.bridge.cv2_to_imgmsg(frame_0, encoding='bgr8')
         image_msg_1 = self.bridge.cv2_to_imgmsg(frame_1, encoding='bgr8')
         image_msg_2 = self.bridge.cv2_to_imgmsg(frame_2, encoding='bgr8')
-        image_msg_3 = self.bridge.cv2_to_imgmsg(frame_3, encoding='bgr8')
         # image_msg.header.stamp = self.get_clock().now().to_msg()
         # 给时间戳添加噪音，模仿真实相机时间戳的抖动情况
+        sec_0, nanosec_0 = self.split_ns(total_ns_0)
+        image_msg_0.header.stamp.sec = sec_0
+        image_msg_0.header.stamp.nanosec = nanosec_0
+
         sec_1, nanosec_1 = self.split_ns(total_ns_1)
         image_msg_1.header.stamp.sec = sec_1
         image_msg_1.header.stamp.nanosec = nanosec_1
@@ -138,15 +142,11 @@ class CameraPubNode(Node):
         image_msg_2.header.stamp.sec = sec_2
         image_msg_2.header.stamp.nanosec = nanosec_2
 
-        sec_3, nanosec_3 = self.split_ns(total_ns_3)
-        image_msg_3.header.stamp.sec = sec_3
-        image_msg_3.header.stamp.nanosec = nanosec_3
-
         self.camera_microtimestamp += self.t  # 增加相应的毫秒数
         
+        self.image_publisher_0.publish(image_msg_0)
         self.image_publisher_1.publish(image_msg_1)
         self.image_publisher_2.publish(image_msg_2)
-        self.image_publisher_3.publish(image_msg_3)
         # self.get_logger().info("Published a frame.")
         # self.get_logger().info(f"Published a frame. Callback耗时: {(time.time()-start_time)*1000:.2f}ms")  # 打印耗时
 

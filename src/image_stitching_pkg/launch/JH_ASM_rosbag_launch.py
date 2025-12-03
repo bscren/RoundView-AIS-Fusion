@@ -63,8 +63,10 @@ def generate_launch_description():
             'cropornot': True, # 是否裁剪全景图
             'drawboxornot': True, # 是否绘制检测框
             'save_CameraParams': False,
-            "save_CameraParams_path": "/home/tl/RV/src/image_stitching_pkg/config/CameraParams_LongDistance.yaml",
-            'use_saved_CameraParams': True
+            'save_CameraParams_path': "/home/tl/RV/src/image_stitching_pkg/config/CameraParams_LongDistance.yaml",
+            'use_saved_CameraParams': True,
+            'FOV_hor': 105.0,
+            'FOV_ver': 57.0
         }],
         remappings=[
             ('/rtsp_image_0', '/rtsp_image_0'),# 左->右

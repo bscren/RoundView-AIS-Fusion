@@ -29,7 +29,7 @@ class AisPubNode(Node):
         # 创建AIS消息发布者
         self.ais_publisher = self.create_publisher(
             Ais,
-            'ais_csv_topic',
+            '/ais_csv_topic',
             10,# 队列大小
         )
         # 创建定时器，1秒钟触发一次

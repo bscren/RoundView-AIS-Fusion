@@ -1,3 +1,4 @@
+# 单线程的逐帧处理，适用于ROS 2环境下的快速原型演示
 import os
 import time
 import imutils

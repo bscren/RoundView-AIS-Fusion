@@ -6,7 +6,7 @@
             "name": "ROS2: Assemble Launch",
             "type": "ros2",
             "request": "launch",
-            "target": "/home/tl/RV/src/marnav_vis/launch/Assemble_launch.py",
+            "target": "/home/tl/RV/src/marnav_vis/launch/Assemble_JH_launch.py",
             "subProcess": true  // 在子进程中运行
         },
         {

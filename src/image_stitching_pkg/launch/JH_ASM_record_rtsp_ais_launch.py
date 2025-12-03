@@ -65,8 +65,10 @@ def generate_launch_description():
             'cropornot': True, # 是否裁剪全景图
             'drawboxornot': False, # 是否绘制检测框
             'save_CameraParams': False, # 是否保存相机K R T参数
-            "save_CameraParams_path": "/home/tl/RV/src/image_stitching_pkg/config/CameraParams_SiteTest.yaml",
-            'use_saved_CameraParams': True # 是否使用已保存的相机K R T参数
+            'save_CameraParams_path': "/home/tl/RV/src/image_stitching_pkg/config/CameraParams_SiteTest.yaml",
+            'use_saved_CameraParams': True, # 是否使用已保存的相机K R T参数
+            'FOV_hor': 105.0,
+            'FOV_ver': 57.0
         }],
         remappings=[
             ('/rtsp_image_0', '/rtsp_image_0'),# 左->右

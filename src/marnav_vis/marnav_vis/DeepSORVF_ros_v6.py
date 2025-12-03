@@ -1,3 +1,5 @@
+# 基于现有数据集的ROS 2多进程版本，实现多相机图像的AIS+VIS+FUS处理与拼接显示
+# 并未适配JH拼接代码，仅作为多进程版本的示例
 import os
 import time
 import imutils
@@ -82,12 +84,12 @@ class AisVisNode(Node):
             parameters=[
                 ('ais_start_timestamp', 1654315512000),
                 ('width_height', [2560, 1440]),
-                ('camera_topics', ['/camera_image_topic_1', '/camera_image_topic_2', '/camera_image_topic_3']),
+                ('camera_topics', ['/camera_image_topic_0', '/camera_image_topic_1', '/camera_image_topic_2']),
                 ('aisbatch_topic', 'ais_batch_topic'),
                 ('gnss_topic', 'gnss_topic'),
                 ('input_fps', 25),
                 ('output_fps', 10),
-                ('camera_para', [56.0, 30.94, 2391.26, 2446.89, 1305.04, 855.214]),
+                ('camera_para', [56.0, 30.94, 2391.26, 2446.89, 1305.04, 855.214]), # Horizontal FoV	Vertical FoV	fx	fy	u0	v0
                 ('anti', 1),
                 ('anti_rate', 0),
                 ('sync_queue_size', 10),

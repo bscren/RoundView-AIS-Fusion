@@ -82,7 +82,9 @@ public:
         bool drawboxornot = true,
         bool save_CameraParams = false,
         string save_CameraParams_path = "/home/tl/RV/src/image_stitching_pkg/config/CameraParams.yaml",
-        bool use_saved_CameraParams = false
+        bool use_saved_CameraParams = false,
+        double FOV_hor = 105.0,
+        double FOV_ver = 57.0
     );
 
     // 首次处理图像组具体，生成变换数据
@@ -101,11 +103,22 @@ public:
         const std::unordered_map<std::string, std::vector<DetectionResult>>& latest_detections_
     );
 
+    // 获取cam_name_to_idx_映射（getter接口）
+    const std::unordered_map<std::string, int>& getCamNameToIdx() const { return cam_name_to_idx_; }
+    
     // 获取最新的变形图像
     const std::vector<cv::UMat>& getLatestWarpImages() const { return latest_warp_images_32F; }
 
     // 获取筛选后的检测框（getter接口）
     const std::vector<BoxInfo>& getFilteredBoxes() const { return filtered_boxes_;}
+
+    // 获取变换数据（getter接口）
+    const TransformationData& getTransformationData() const { return transformation_data_; }
+
+    // 获取视场角参数
+    double getFOVHor() const { return FOV_hor_; }
+    double getFOVVer() const { return FOV_ver_; }
+    
     // 更新拼缝线
     void updatestitchlineImpl();
 
@@ -127,6 +140,9 @@ private:
     bool save_CameraParams_;
     string save_CameraParams_path_;
     bool use_saved_CameraParams_;
+//  视场角参数，也是用于共享的
+    double FOV_hor_;
+    double FOV_ver_;
 
 
 
