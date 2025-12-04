@@ -35,7 +35,7 @@ from utils_JH.draw import DRAW
 # 由v4的多线程改为v5的多进程，每个进程独立处理一帧: 包含AIS, VIS, FUS, DRAW
 
 # ------------------------------------------------------
-def multi_proc_worker(input_queue, output_queue, im_shape, t, max_dis):
+def multi_proc_worker(input_queue, output_queue, im_shape, t, max_dis, skip_interval = 1):
     """
     每个进程独立处理一帧: 包含AIS, VIS, FUS, DRAW
      1. 从输入队列获取任务
@@ -86,6 +86,11 @@ def multi_proc_worker(input_queue, output_queue, im_shape, t, max_dis):
     vispro = VISPRO(1, 0, t)  # 是否读取anti参数可以自定义
     fuspro = FUSPRO(max_dis, im_shape, t)
     dra = DRAW(im_shape, t)
+
+    # 缓存上一帧的结果
+    last_updated_bin = pd.DataFrame()
+    # 记录上次处理时所属的时间窗口
+    last_processed_window = -1
     while True:
         start_time = time.time()
         task = input_queue.get()
@@ -93,35 +98,47 @@ def multi_proc_worker(input_queue, output_queue, im_shape, t, max_dis):
             break
         try:
             cam_idx = task["cam_idx"]
-            print(f"worker {cam_idx} processing task, pid={os.getpid()}")
             cv_image = task["cv_image"]
             current_timestamp = task["current_timestamp"]
             ais_batch = task["ais_batch"]
             camera_pos_para = task["camera_pos_para"]
             bin_inf = task["bin_inf"]
-            ais_skip_ratio = 1
-            vis_skip_ratio = 1
-            fus_skip_ratio = 1
+            
 
-            print(f"Process cam{cam_idx} at timestamp {current_timestamp}")
-            # print(f"Camera pos para: {camera_pos_para}")
-            # # 1. AIS
-            # AIS_vis, AIS_cur = aispro.process(ais_batch, camera_pos_para, current_timestamp, skip_ratio=ais_skip_ratio)
-            # # 2. VIS
-            # Vis_tra, Vis_cur = vispro.feedCap(cv_image, current_timestamp, AIS_vis, bin_inf, skip_ratio=vis_skip_ratio)
-            # # 3. FUS
-            # Fus_tra, updated_bin = fuspro.fusion(AIS_vis, AIS_cur, Vis_tra, Vis_cur, current_timestamp, skip_ratio=fus_skip_ratio)
-            # # 4. DRAW
-            # im = dra.draw_traj(cv_image, AIS_vis, AIS_cur, Vis_tra, Vis_cur, Fus_tra, timestamp=current_timestamp,  skip_ratio = 4)
+            # 计算当前时间戳属于哪个窗口
+            current_window = current_timestamp // skip_interval
+            
+            # 只有进入新窗口时才处理
+            process_ais_vis_fus = (current_window != last_processed_window)
+            
+            if process_ais_vis_fus:
+                # print(f"process_ais_vis_fus at timestamp {current_timestamp}, worker {cam_idx} processing task, pid={os.getpid()}")
+                # 1. AIS
+                AIS_vis, AIS_cur = aispro.process(ais_batch, camera_pos_para, current_timestamp)
+                # 2. VIS
+                Vis_tra, Vis_cur = vispro.feedCap(cv_image, AIS_vis, bin_inf, current_timestamp)
+                # 3. FUS
+                Fus_tra, updated_bin = fuspro.fusion(AIS_vis, AIS_cur, Vis_tra, Vis_cur, current_timestamp)
+                # 4. DRAW
+                im = dra.draw_match_traj(cv_image, AIS_vis, AIS_cur, Vis_tra, Vis_cur, Fus_tra, timestamp=current_timestamp)
+                # 更新配对关系
+                last_updated_bin = updated_bin
+                # 更新窗口标记
+                last_processed_window = current_window
+            else:
+                # print(f"no process_ais_vis_fus at timestamp {current_timestamp}, worker {cam_idx} processing task, pid={os.getpid()}")
+                im = dra.draw_no_match_traj(cv_image)
+                updated_bin = last_updated_bin
             
             end_time = time.time()
             time_cost = end_time - start_time
             result = {
                 "cam_idx": cam_idx, 
-                # "image": im, 
-                "image": cv_image,
+                "image": im, 
+                # "image": cv_image,
                 "timestamp": current_timestamp, 
-                "updated_bin": pd.DataFrame(),
+                "updated_bin": updated_bin,
+                # "updated_bin": pd.DataFrame(),
                 "time_cost": time_cost
             }
             try:
@@ -136,6 +153,9 @@ def multi_proc_worker(input_queue, output_queue, im_shape, t, max_dis):
             except:
                 pass
 # ------------------------------------------------------
+
+
+
 # 作为客户端请求相机参数
 def get_camera_params_client(node, camera_name):
     # node.get_logger().info(f'请求相机参数: {camera_name}')
@@ -160,6 +180,8 @@ def get_camera_params_client(node, camera_name):
         node.get_logger().error('获取相机参数失败')
         return None
 
+
+
 class AisVisNode(Node):
     def __init__(self, camera_para):
         super().__init__('ais_vis_node')
@@ -167,10 +189,9 @@ class AisVisNode(Node):
         self.declare_parameters(
             namespace='',
             parameters=[
-                ('ais_start_timestamp', 1654315512000),
                 ('width_height', [2560, 1440]),
-                # ('camera_topics', ['/camera_image_topic_0', '/camera_image_topic_1', '/camera_image_topic_2']),
-                ('camera_topics', ['/rtsp_image_0', '/rtsp_image_1', '/rtsp_image_2']),
+                ('camera_topics', ['/camera_image_topic_0', '/camera_image_topic_1', '/camera_image_topic_2']),
+                # ('camera_topics', ['/rtsp_image_0', '/rtsp_image_1', '/rtsp_image_2']),
                 ('aisbatch_topic', '/ais_batch_topic'),
                 ('gnss_topic', '/gnss_topic'),
                 ('input_fps', 15),
@@ -178,11 +199,11 @@ class AisVisNode(Node):
                 ('anti', 1),
                 ('anti_rate', 0),
                 ('sync_queue_size', 10),
-                ('sync_slop', 0.1)
+                ('sync_slop', 0.1),
+                ('skip_interval', 1000) # 单位ms，表示每隔skip_interval ms处理一帧
             ]
         )
-
-        self.ais_start_timestamp = self.get_parameter('ais_start_timestamp').get_parameter_value().integer_value
+        self.camera_para = camera_para
         self.im_shape = tuple(map(int, self.get_parameter('width_height').get_parameter_value().integer_array_value))
         self.camera_topics = self.get_parameter('camera_topics').get_parameter_value().string_array_value
         self.aisbatch_topic = self.get_parameter('aisbatch_topic').get_parameter_value().string_value
@@ -190,17 +211,12 @@ class AisVisNode(Node):
         self.input_fps = self.get_parameter('input_fps').get_parameter_value().integer_value
         self.t = int(1000 / self.input_fps)
         self.output_fps = self.get_parameter('output_fps').get_parameter_value().integer_value
-        # self.camera_para_wasted = list(self.get_parameter('camera_para').get_parameter_value().double_array_value)
-        self.camera_para = camera_para
 
         self.anti = self.get_parameter('anti').get_parameter_value().integer_value
         self.anti_rate = self.get_parameter('anti_rate').get_parameter_value().integer_value
         self.sync_queue_size = self.get_parameter('sync_queue_size').get_parameter_value().integer_value
         self.sync_slop = self.get_parameter('sync_slop').get_parameter_value().double_value
-
-        now_timestamp = self.get_clock().now().to_msg().sec * 1000 + self.get_clock().now().to_msg().nanosec // 1000000
-        self.time_offset = now_timestamp - self.ais_start_timestamp
-        self.get_logger().info(f"Current timestamp: {now_timestamp}, AIS start timestamp: {self.ais_start_timestamp}, Time offset: {self.time_offset} ms\n")
+        self.skip_interval = self.get_parameter('skip_interval').get_parameter_value().integer_value
 
         self.bridge = CvBridge()
         self.aisbatch_cache = pd.DataFrame(columns=['ID', 'mmsi', 'timestamp', 'lat', 'lon', 'sog', 'cog', 'heading', 'status', 'type'])
@@ -221,7 +237,7 @@ class AisVisNode(Node):
         self.workers = [
             Process(
                 target=multi_proc_worker,
-                args=(self.mp_input_queues[i], self.mp_output_queues[i], self.im_shape, self.t, self.max_dis)
+                args=(self.mp_input_queues[i], self.mp_output_queues[i], self.im_shape, self.t, self.max_dis, self.skip_interval)
             )
             for i in range(self.num_cameras)
         ]
@@ -338,24 +354,39 @@ class AisVisNode(Node):
         # 更新相机位置信息，以相机camera_image_topic_1为正前方
         # 因此这里假设camera_image_topic_1是中间相机，camera_image_topic_0和camera_image_topic_2的水平朝向分别调整-60和+60度
         for idx, cam_topic in enumerate(self.camera_topics):
-            cam_topic = cam_topic.strip('/') # 去掉前导斜杠: /rtsp_image_0 -> rtsp_image_0
             horizontal_orientation = (msg.horizontal_orientation + (idx - 1) * 60) % 360  # 中间相机不变，左右相机调整±60度，若超出360度范围，进行归一化
+            # self.camera_pos_para[idx] = {
+            #     "longitude": msg.longitude,
+            #     "latitude": msg.latitude,
+            #     "horizontal_orientation": horizontal_orientation,
+            #     "vertical_orientation": msg.vertical_orientation,
+            #     "camera_height": msg.camera_height,
+            #     'fov_hor': self.camera_para.get(idx, {}).get('fov_hor', None),
+            #     'fov_ver': self.camera_para.get(idx, {}).get('fov_ver', None),
+            #     'focal': self.camera_para.get(idx, {}).get('focal', None),
+            #     'aspect': self.camera_para.get(idx, {}).get('aspect', None),
+            #     'ppx': self.camera_para.get(idx, {}).get('ppx', None),
+            #     'ppy': self.camera_para.get(idx, {}).get('ppy', None),
+            #     'R': self.camera_para.get(idx, {}).get('R', None),
+            #     't': self.camera_para.get(idx, {}).get('t', None),
+            #     'K': self.camera_para.get(idx, {}).get('K', None)
+            #     # "intrinsics": self.camera_para.get(cam_topic, {})
+            # }
+            # DEBUG 
+            # Lon	Lat	Horizontal Orientation	Vertical Orientation	Camera Height	Horizontal FoV	Vertical FoV	fx	fy	u0	v0
+            # 114.32583	30.60139	7	-1	20	55	30.94	2391.26	2446.89	1305.04	855.214
             self.camera_pos_para[idx] = {
-                "longitude": msg.longitude,
-                "latitude": msg.latitude,
-                "horizontal_orientation": horizontal_orientation,
-                "vertical_orientation": msg.vertical_orientation,
-                "camera_height": msg.camera_height,
-                'fov_hor': self.camera_para.get(cam_topic, {}).get('fov_hor', None),
-                'fov_ver': self.camera_para.get(cam_topic, {}).get('fov_ver', None),
-                'focal': self.camera_para.get(cam_topic, {}).get('focal', None),
-                'aspect': self.camera_para.get(cam_topic, {}).get('aspect', None),
-                'ppx': self.camera_para.get(cam_topic, {}).get('ppx', None),
-                'ppy': self.camera_para.get(cam_topic, {}).get('ppy', None),
-                'R': self.camera_para.get(cam_topic, {}).get('R', None),
-                't': self.camera_para.get(cam_topic, {}).get('t', None),
-                'K': self.camera_para.get(cam_topic, {}).get('K', None)
-                # "intrinsics": self.camera_para.get(cam_topic, {})
+                "longitude": 114.32583,
+                "latitude": 30.60139,
+                "horizontal_orientation": 7,
+                "vertical_orientation": -1,
+                "camera_height": 20,
+                'fov_hor': 55,
+                'fov_ver': 30.94,
+                'fx': 2391.26,
+                'fy': 2446.89,
+                'u0': 1305.04,
+                'v0': 855.214,
             }
 
 
@@ -371,8 +402,8 @@ class AisVisNode(Node):
                         continue
                     cam_idx = result["cam_idx"]
                     time_cost = result.get("time_cost", 0)
-                    if time_cost is not None:
-                        self.get_logger().info(f"Camera {cam_idx}  Time cost: {time_cost} seconds")
+                    # if time_cost is not None:
+                    #     self.get_logger().info(f"Camera {cam_idx}  Time cost: {time_cost} seconds")
                     im = result["image"]
                     updated_bin = result.get("updated_bin", None)
                     self.latest_processed_images[f'cam{cam_idx}'] = im
@@ -440,10 +471,10 @@ def main(args=None):
     camera_para = {}
     # 这里假设参数声明和读取与AisVisNode一致
     camera_topics = tmp_node.declare_parameter('camera_topics', ['rtsp_image_0', 'rtsp_image_1', 'rtsp_image_2']).get_parameter_value().string_array_value
-    for cam_name in camera_topics:
+    for idx, cam_name in enumerate(camera_topics):
         resp = get_camera_params_client(tmp_node, cam_name)
         if resp:
-            camera_para[cam_name] = {
+            camera_para[idx] = {
                 'fov_hor': resp.fov_hor,
                 'fov_ver': resp.fov_ver,
                 'focal': resp.focal,

@@ -21,18 +21,33 @@ def angle(v1, v2):
     :return: 轨迹速度夹角(弧度制)
     """
     # 计算轨迹速度的夹角
+    
+    # 如果轨迹点太少（小于2个），无法计算方向，返回0（认为方向一致）
+    if len(v1) < 2 or len(v2) < 2:
+        print(f"  [angle] 轨迹点不足: VIS={len(v1)}, AIS={len(v2)}, 返回0度")
+        return 0
+    
     if len(v1) >= 10: # VIS取最近10个点计算方向
         dx1 = v1[-1][0] - v1[-10][0] # x方向变化,from old to new
         dy1 = v1[-1][1] - v1[-10][1] 
-    elif len(v1) < 10: # 取所有点计算方向
+    else: # 取所有点计算方向
         dx1 = v1[-1][0] - v1[0][0] # x方向变化,from old to new
         dy1 = v1[-1][1] - v1[0][1]
+    
     if len(v2) >= 5: # AIS取最近5个点计算方向
         dx2 = v2[-1][0] - v2[0][0]
         dy2 = v2[-1][1] - v2[0][1]
-    elif len(v2) < 5:
+    else:
         dx2 = v2[-1][0] - v2[0][0]
         dy2 = v2[-1][1] - v2[0][1]
+    
+    # 检查是否有移动（避免除以0）
+    if dx1 == 0 and dy1 == 0:
+        print(f"  [angle] VIS轨迹无移动，返回0度")
+        return 0
+    if dx2 == 0 and dy2 == 0:
+        print(f"  [angle] AIS轨迹无移动，返回0度")
+        return 0
     
     angle1 = math.atan2(dy1, dx1)
     angle2 = math.atan2(dy2, dx2)
@@ -54,8 +69,11 @@ def DTW_fast(traj0, traj1):
     # 1.计算轨迹间夹角
     if len(traj0)>1 and len(traj1)>1:
         theta = angle(traj0, traj1)
-        traj0 = __reduce_by_half(traj0) # 轨迹压缩,以加快fastDTW计算速度,同时不损失太多精度
-        traj1 = __reduce_by_half(traj1)
+        # 只有在轨迹点足够多时才压缩，否则会丢失信息
+        if len(traj0) > 4:
+            traj0 = __reduce_by_half(traj0) # 轨迹压缩,以加快fastDTW计算速度,同时不损失太多精度
+        if len(traj1) > 4:
+            traj1 = __reduce_by_half(traj1)
     else:
         theta = 0
     
@@ -82,29 +100,63 @@ def traj_group(df_data, df_dataCur,  kind):
     
     # 2.AIS数据分组
     if kind == 'AIS':
-        grouped = df_data.groupby('mmsi')
-        for value, group in grouped:
+        if df_data.empty:
+            print(f"  [traj_group AIS] ⚠️ df_data 为空！")
+            return trajData_list, trajLabel_list, trajInf_list
+        if df_dataCur.empty:
+            print(f"  [traj_group AIS] ⚠️ df_dataCur 为空！")
+            return trajData_list, trajLabel_list, trajInf_list
             
+        grouped = df_data.groupby('mmsi')
+        print(f"  [traj_group AIS] df_data有 {len(grouped)} 个mmsi分组")
+        cur_mmsi_list = df_dataCur['mmsi'].tolist()
+        print(f"  [traj_group AIS] df_dataCur包含mmsi: {cur_mmsi_list}")
+        
+        for value, group in grouped:
             # 仅记录历史中符合当前时刻存在的船
-            if value in df_dataCur['mmsi'].tolist():
+            if value in cur_mmsi_list:
                 traj = group.values
+                print(f"    mmsi {value}: 提取 {len(traj)} 个轨迹点")
                 
                 trajData_list.append(np.array(traj[:, 7:9])) # 提取x7,y8位置
                 trajLabel_list.append(int(traj[0, 0]))
                 trajInf_list.append(traj)
+            else:
+                print(f"    mmsi {value}: 不在当前时刻，跳过")
+        
+        if len(trajData_list) == 0:
+            print(f"  [traj_group AIS] ⚠️ 没有提取到任何AIS轨迹！")
+            print(f"    可能原因：df_dataCur中的mmsi不在df_data中")
     
     # 3.VIS数据分组
     elif kind == 'VIS':
-        grouped = df_data.groupby('ID')
-        for value, group in grouped:
+        if df_data.empty:
+            print(f"  [traj_group VIS] ⚠️ df_data 为空！")
+            return trajData_list, trajLabel_list, trajInf_list
+        if df_dataCur.empty:
+            print(f"  [traj_group VIS] ⚠️ df_dataCur 为空！")
+            return trajData_list, trajLabel_list, trajInf_list
             
+        grouped = df_data.groupby('ID')
+        print(f"  [traj_group VIS] df_data有 {len(grouped)} 个ID分组")
+        cur_id_list = df_dataCur['ID'].tolist()
+        print(f"  [traj_group VIS] df_dataCur包含ID: {cur_id_list}")
+        
+        for value, group in grouped:
             # 仅记录历史中符合当前时刻存在的船
-            if value in df_dataCur['ID'].tolist():
+            if value in cur_id_list:
                 traj = group.values
+                print(f"    ID {value}: 提取 {len(traj)} 个轨迹点")
                 
                 trajData_list.append(np.array(traj[:, 5:7]))
                 trajLabel_list.append(int(traj[0][0]))
                 trajInf_list.append(traj)
+            else:
+                print(f"    ID {value}: 不在当前时刻，跳过")
+        
+        if len(trajData_list) == 0:
+            print(f"  [traj_group VIS] ⚠️ 没有提取到任何VIS轨迹！")
+            print(f"    可能原因：df_dataCur中的ID不在df_data中")
 
     return trajData_list, trajLabel_list, trajInf_list
 
@@ -193,9 +245,12 @@ class FUSPRO(object):
                     dis   = ((x_VIS-x_AIS)**2+(y_VIS-y_AIS)**2)**0.5
                     # 判断是否保存
                     if dis < self.max_dis and theta < math.pi*(5/6): 
-                        matrix_S[i][j] = DTW_fast(VIS_list[i], AIS_list[j])
+                        dtw_dist = DTW_fast(VIS_list[i], AIS_list[j])
+                        matrix_S[i][j] = dtw_dist
+                        print(f"    ID {int(cur_ID)} <-> mmsi {int(cur_mmsi)}: dis={dis:.1f}, theta={theta:.3f}, DTW={dtw_dist:.2f}")
                     else:
                         matrix_S[i][j] = 1000000000
+                        print(f"    ID {int(cur_ID)} <-> mmsi {int(cur_mmsi)}: dis={dis:.1f} (max={self.max_dis}), theta={theta:.3f} => 距离或角度超限，排除")
 
                 # 情况2: 存在绑定信息时，极小值
                 elif cur_IDmmsi in binIDmmsi:
@@ -216,6 +271,8 @@ class FUSPRO(object):
         # 1.初始化
         matches = []
 
+        print(f"  [data_filter] 匈牙利算法输出 {len(row_ind)} 个匹配对，开始过滤...")
+        
         # 2.删除过远或角度过大数据
         for row, col in zip(row_ind, col_ind):
             # 计算夹角
@@ -227,9 +284,15 @@ class FUSPRO(object):
             x_AIS = AIS_list[col][-1][0]
             y_AIS = AIS_list[col][-1][1]
             dis   = ((x_VIS-x_AIS)**2+(y_VIS-y_AIS)**2)**0.5
+            
             # 判断是否保存
-            if dis < self.max_dis and theta < math.pi*(5/6): # 
+            passed = dis < self.max_dis and theta < math.pi*(5/6)
+            print(f"    VIS[{row}] <-> AIS[{col}]: dis={dis:.1f} (max={self.max_dis}), theta={theta:.3f} (max={math.pi*5/6:.3f}) => {'通过' if passed else '过滤'}")
+            
+            if passed:
                 matches.append((row, col))
+        
+        print(f"  [data_filter] 过滤后剩余 {len(matches)} 个匹配对")
         return matches
     
     def save_data(self, mat_cur, bin_cur, mat_las, bin_las, mat_list,\
@@ -323,16 +386,30 @@ class FUSPRO(object):
 
         return mat_list, mat_cur, bin_cur
     
-    def fusion(self,AIS_vis, AIS_cur, Vis_tra, Vis_cur, timestamp, skip_ratio):
-        if timestamp % int(skip_ratio * 1000) < self.t:
-            # 1.信息分组提取
-            AIS_list, AIS_MMSIlist, AInf_list = traj_group(AIS_vis, AIS_cur, 'AIS')
-            VIS_list, VIS_IDlist, VInf_list = traj_group(Vis_tra, Vis_cur, 'VIS')
-            
-            # 2.轨迹匹配
-            self.mat_list, self.mat_cur, self.bin_cur = self.traj_match(
-                AIS_list, AIS_MMSIlist, VIS_list, VIS_IDlist, AInf_list, VInf_list, timestamp)
-            
+    def fusion(self,AIS_vis, AIS_cur, Vis_tra, Vis_cur, timestamp):
+        # 1.信息分组提取
+        AIS_list, AIS_MMSIlist, AInf_list = traj_group(AIS_vis, AIS_cur, 'AIS')
+        VIS_list, VIS_IDlist, VInf_list = traj_group(Vis_tra, Vis_cur, 'VIS')
+        
+        # 调试信息
+        print(f"[FUSION DEBUG] timestamp={timestamp}")
+        print(f"  AIS_vis shape: {AIS_vis.shape}, AIS_cur shape: {AIS_cur.shape}")
+        print(f"  Vis_tra shape: {Vis_tra.shape}, Vis_cur shape: {Vis_cur.shape}")
+        print(f"  AIS_list count: {len(AIS_list)}, VIS_list count: {len(VIS_list)}")
+        if len(AIS_list) > 0:
+            print(f"  AIS轨迹点数: {[len(traj) for traj in AIS_list]}")
+        if len(VIS_list) > 0:
+            print(f"  VIS轨迹点数: {[len(traj) for traj in VIS_list]}")
+        
+        # 2.轨迹匹配
+        self.mat_list, self.mat_cur, self.bin_cur = self.traj_match(
+            AIS_list, AIS_MMSIlist, VIS_list, VIS_IDlist, AInf_list, VInf_list, timestamp)
+        
+        print(f"  融合结果 mat_list shape: {self.mat_list.shape}")
+        if not self.mat_list.empty:
+            print(f"  成功融合: {list(self.mat_list['ID'].unique())}")
+        else:
+            print(f"  融合失败: mat_list为空")
             
         return self.mat_list, self.bin_cur
 

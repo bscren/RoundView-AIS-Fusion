@@ -378,34 +378,50 @@ class VISPRO(object):
         return bboxes_anti_occ
 
         
-    def feedCap(self, image, timestamp, AIS_vis, bind_inf, skip_ratio):
-        # 情况1: 当前时刻需要进行检测
-        if timestamp % int(skip_ratio * 1000) < self.t: # 这样能让每一秒钟的有且仅有第一帧进行检测————一秒一次
-            
-            # 1.1.目标检测框生成
-            bboxes = self.detection(image)
-            # print(bboxes)
-            # 1.2.抗遮挡
-            bboxes_anti_occ = self.anti_occ(self.last5_vis_tra_list, bboxes, AIS_vis, bind_inf, timestamp // 1000)
+    def feedCap(self, image, AIS_vis, bind_inf, timestamp):            
+        # 1.1.目标检测框生成
+        bboxes = self.detection(image)
+        # print(bboxes)
+        print(f"[VIS DEBUG] timestamp={timestamp}, 检测到 {len(bboxes)} 个目标")
 
-            # 1.3.DeepSORT跟踪
-            # print(bboxes_anti_occ)
-            self.track(image, bboxes, bboxes_anti_occ=bboxes_anti_occ,\
-                    id_list=self.OAR_ids_list, timestamp=timestamp // 1000) # 触发 track 跟踪 是 “每帧 1 次”（视频帧率通常是 25/30 帧 / 秒）
+        # 1.2.抗遮挡
+        bboxes_anti_occ = self.anti_occ(self.last5_vis_tra_list, bboxes, AIS_vis, bind_inf, timestamp // 1000)
 
-            # 轨迹数据更新
-            Vis_tra_cur = self.Vis_tra_cur
-            if timestamp % 1000 < self.t:
-                Vis_tra_cur = self.update_tra(self.Vis_tra, timestamp) # update_tra 方法的调用时机是 “每秒 1 次”（由 timestamp // 1000 秒级时间戳控制）
-                if self.anti:
-                    # 根据上一时刻跟踪结果，提取出存在AIS的遮挡重叠船舶框以及对应ID
-                    self.OAR_list, self.OAR_ids_list = OAR_extractor(self.last5_vis_tra_list, self.val)
-                    # print("OAR_id_list", self.OAR_ids_list)
-                self.VIS_tra_last = Vis_tra_cur
+        # 1.3.DeepSORT跟踪
+        # print(bboxes_anti_occ)
+        self.track(image, bboxes, bboxes_anti_occ=bboxes_anti_occ,\
+                id_list=self.OAR_ids_list, timestamp=timestamp // 1000) # 触发 track 跟踪 是 “每帧 1 次”（视频帧率通常是 25/30 帧 / 秒）
+        print(f"[VIS DEBUG] track后 Vis_tra_cur_3 shape: {self.Vis_tra_cur_3.shape}")
 
-                # 更新被遮挡id对应的轨迹数据
-                self.Anti_occlusion_traj = pd.DataFrame(columns=['ID', 'x1', 'y1', 'x2', 'y2', 'x', 'y', 'speed', 'timestamp'])
-                id_list = list(self.VIS_tra_last['ID'].unique())
-                for i in self.OAR_ids_list:
-                    self.Anti_occlusion_traj = self.Anti_occlusion_traj.append(self.VIS_tra_last.iloc[id_list.index(i)])
+        # 轨迹数据更新
+        print(f"[VIS DEBUG] update_tra前 Vis_tra_cur_3 shape: {self.Vis_tra_cur_3.shape}, IDs: {list(self.Vis_tra_cur_3['ID'].unique()) if not self.Vis_tra_cur_3.empty else []}")
+        
+        Vis_tra_cur = self.Vis_tra_cur
+        # if timestamp % 1000 < self.t:
+        Vis_tra_cur = self.update_tra(self.Vis_tra, timestamp) # update_tra 方法的调用时机是 "每秒 1 次"（由 timestamp // 1000 秒级时间戳控制）
+        print(f"[VIS DEBUG] update_tra后 Vis_tra shape: {self.Vis_tra.shape}, Vis_tra_cur shape: {Vis_tra_cur.shape}")
+        if not self.Vis_tra.empty:
+            print(f"  Vis_tra ID列表: {list(self.Vis_tra['ID'].unique())}")
+            # 统计每个ID的轨迹点数
+            for vid in self.Vis_tra['ID'].unique():
+                count = len(self.Vis_tra[self.Vis_tra['ID'] == vid])
+                print(f"    ID {vid}: {count} 个轨迹点")
+        else:
+            print(f"  ⚠️ Vis_tra 为空！")
+        
+        if Vis_tra_cur.empty:
+            print(f"  ⚠️ Vis_tra_cur 为空！")
+                
+        if self.anti:
+            # 根据上一时刻跟踪结果，提取出存在AIS的遮挡重叠船舶框以及对应ID
+            self.OAR_list, self.OAR_ids_list = OAR_extractor(self.last5_vis_tra_list, self.val)
+            # print("OAR_id_list", self.OAR_ids_list)
+        self.VIS_tra_last = Vis_tra_cur
+
+        # 更新被遮挡id对应的轨迹数据
+        self.Anti_occlusion_traj = pd.DataFrame(columns=['ID', 'x1', 'y1', 'x2', 'y2', 'x', 'y', 'speed', 'timestamp'])
+        id_list = list(self.VIS_tra_last['ID'].unique())
+        for i in self.OAR_ids_list:
+            self.Anti_occlusion_traj = self.Anti_occlusion_traj.append(self.VIS_tra_last.iloc[id_list.index(i)])
+        
         return self.Vis_tra, self.Vis_tra_cur

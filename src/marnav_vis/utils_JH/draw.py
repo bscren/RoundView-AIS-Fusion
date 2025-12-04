@@ -201,42 +201,45 @@ class DRAW(object):
         self.t = t
         
 
-    def draw_traj(self, pic, AIS_vis, AIS_cur, Vis_tra, Vis_cur, fusion_list, timestamp, skip_ratio):
+    def draw_match_traj(self, pic, AIS_vis, AIS_cur, Vis_tra, Vis_cur, fusion_list, timestamp):
         add_img = pic.copy()
-        if timestamp % int(skip_ratio * 1000) < self.t:
-            df_draw = pd.DataFrame(columns=['ais', 'mmsi', 'sog', 'cog',\
-                'lat', 'lon', 'box_x1', 'box_y1', 'box_x2', 'box_y2',\
-                                    'inf_x1', 'inf_y1', 'inf_x2', 'inf_y2', 'color'])
-            mmsi_list = AIS_vis['mmsi'].unique()
-            id_list = Vis_cur['ID'].unique()
-            # 1. 遍历所有视觉ID
-            for i in range(len(id_list)):
-                # 1.1. 选取第i个ID的视觉轨迹
-                id_current = Vis_tra[Vis_tra['ID'] == id_list[i]].reset_index(drop=True)
-                last = len(id_current)-1
-                if last != -1:
-                    x1 = int(max(id_current['x1'][last],0))
-                    y1 = int(max(id_current['y1'][last],0))
-                    x2 = int(min(id_current['x2'][last],self.w))
-                    y2 = int(min(id_current['y2'][last],self.h))
-                    if id_current['timestamp'][last] == timestamp//1000 and len(fusion_list) != 0:
-                        fusion_current = fusion_list[fusion_list['ID'] == \
-                                id_current['ID'][last]].reset_index(drop=True)
-                        # 存在AIS信息
-                        if len(fusion_current) != 0:
-                            df_draw = process_img(df_draw, x1, y1, x2, y2,\
-                                fusion_current, self.w, self.h, self.w0, self.h0, Type = True)
-                        else:
-                            fusion_current = []
-                            df_draw = process_img(df_draw, x1, y1, x2, y2,\
-                                      fusion_current, self.w, self.h, self.wn, self.hn, Type = False)
-                    # 不存在AIS信息
+        df_draw = pd.DataFrame(columns=['ais', 'mmsi', 'sog', 'cog',\
+            'lat', 'lon', 'box_x1', 'box_y1', 'box_x2', 'box_y2',\
+                                'inf_x1', 'inf_y1', 'inf_x2', 'inf_y2', 'color'])
+        mmsi_list = AIS_vis['mmsi'].unique()
+        id_list = Vis_cur['ID'].unique()
+        # 1. 遍历所有视觉ID
+        for i in range(len(id_list)):
+            # 1.1. 选取第i个ID的视觉轨迹
+            id_current = Vis_tra[Vis_tra['ID'] == id_list[i]].reset_index(drop=True)
+            last = len(id_current)-1
+            if last != -1:
+                x1 = int(max(id_current['x1'][last],0))
+                y1 = int(max(id_current['y1'][last],0))
+                x2 = int(min(id_current['x2'][last],self.w))
+                y2 = int(min(id_current['y2'][last],self.h))
+                if id_current['timestamp'][last] == timestamp//1000 and len(fusion_list) != 0:
+                    fusion_current = fusion_list[fusion_list['ID'] == \
+                            id_current['ID'][last]].reset_index(drop=True)
+                    # 存在AIS信息
+                    if len(fusion_current) != 0:
+                        df_draw = process_img(df_draw, x1, y1, x2, y2,\
+                            fusion_current, self.w, self.h, self.w0, self.h0, Type = True)
                     else:
                         fusion_current = []
                         df_draw = process_img(df_draw, x1, y1, x2, y2,\
-                                      fusion_current, self.w, self.h, self.wn, self.hn, Type = False)      
-            self.df_draw = filter_inf(df_draw, self.w, self.h, self.w0, self.h0, self.wn, self.hn, self.tf)
-        # 画标识
-
+                                    fusion_current, self.w, self.h, self.wn, self.hn, Type = False)
+                # 不存在AIS信息
+                else:
+                    fusion_current = []
+                    df_draw = process_img(df_draw, x1, y1, x2, y2,\
+                                    fusion_current, self.w, self.h, self.wn, self.hn, Type = False)      
+        self.df_draw = filter_inf(df_draw, self.w, self.h, self.w0, self.h0, self.wn, self.hn, self.tf)
         add_img = draw(add_img, self.df_draw, self.tf)
         return add_img
+
+    def draw_no_match_traj(self, pic):
+        add_img = pic.copy()
+        add_img = draw(add_img, self.df_draw, self.tf)
+        return add_img
+
