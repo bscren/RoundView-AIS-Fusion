@@ -94,6 +94,8 @@ def visual_transform(lon_v, lat_v, camera_pos_para, shape):
     FOV_ver = camera_pos_para['fov_ver']
     width_pic = shape[0]
     height_pic = shape[1]
+    # ================================== DEBUG ==================================
+
     f_x = camera_pos_para['fx']
     f_y = camera_pos_para['fy']
     u0 = camera_pos_para['u0']
@@ -104,6 +106,7 @@ def visual_transform(lon_v, lat_v, camera_pos_para, shape):
     # f_y = K[1,1]
     # u0 = K[0,2]
     # v0 = K[1,2]
+    # ================================== DEBUG ==================================
 
 
     # 1.计算距离

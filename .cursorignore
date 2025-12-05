@@ -1,0 +1,24 @@
+# 忽略构建产物
+install/
+build/
+*.apk
+
+# 忽略第三方库和无用测试库
+src/image_pipeline/
+src/webcamcalib/
+src/ais_interfaces/
+src/ais_tools/
+src/marnav_ais/extern/marnav/
+
+# 忽略敏感配置
+# (根据需要添加)
+
+# 忽略日志文件和数据文件
+ais_logs/
+log/
+methodsCompare/
+result/
+ROS2BAG/
+VideonImage/
+
+src/marnav_vis/clip-01

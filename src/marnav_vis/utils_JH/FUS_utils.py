@@ -175,8 +175,7 @@ class FUSPRO(object):
         # 数据1: 当前时刻的匹配数据
         self.mat_cur  = pd.DataFrame(pd.DataFrame(columns=['ID/mmsi','timestamp', 'match']))
         # 数据2: 当前时刻的匹配信息
-        self.mat_list = pd.DataFrame(columns=['ID', 'mmsi',\
-                                'lon', 'lat', 'speed', 'course', 'heading', 'type', 'timestamp'])
+        self.mat_list = pd.DataFrame(columns=['ID', 'mmsi', 'lon', 'lat', 'speed', 'course', 'heading', 'type', 'timestamp'])
         # 数据3: 当前时刻的绑定信息
         self.bin_cur  = pd.DataFrame(columns=['ID', 'mmsi', 'timestamp', 'match'])
 

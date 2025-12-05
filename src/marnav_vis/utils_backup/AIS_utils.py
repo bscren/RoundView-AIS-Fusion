@@ -75,7 +75,7 @@ def visual_transform(lon_v, lat_v, camera_para, shape):
 
     # 1.计算距离
     D_abs = count_distance((lat_cam, lon_cam), (lat_v, lon_v))
-    
+    # 30.60027777777778 114.32722222222222 30.615655989853916 114.3262045215539
     # 2.计算水平夹角
     relative_angle = getDegree(lat_cam, lon_cam, lat_v, lon_v)
     Angle_hor = relative_angle - shoot_hdir
@@ -85,13 +85,15 @@ def visual_transform(lon_v, lat_v, camera_para, shape):
         Angle_hor = Angle_hor - 360
     hor_rad = radians(Angle_hor)
     shv_rad = radians(-shoot_vdir)
+    # 绕x轴旋转shv_rad度，纠正相机俯仰角为理想的0，和对应的船只坐标(X,Y,Z)
     Z_w = D_abs*cos(hor_rad)
     X_w = D_abs*sin(hor_rad)
     Y_w = height_cam
     Z = Z_w/cos(shv_rad)+(Y_w-Z_w*tan(shv_rad))*sin(shv_rad)
     X = X_w
     Y = (Y_w-Z_w*tan(shv_rad))*cos(shv_rad)
-    #print(X,Y,Z)
+
+    # 内参K_matrix计算得到目标图像坐标(target_x, target_y)
     target_x = int(f_x*X/Z+u0)
     target_y = int(f_y*Y/Z+v0)
     # 3.计算垂直夹角

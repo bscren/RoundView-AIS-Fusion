@@ -401,7 +401,7 @@ cv::Mat JHStitcher::processSubsequentGroupImpl
     }
     auto end_time_warp = chrono::high_resolution_clock::now();
     chrono::duration<double> duration_time_warp = end_time_warp - start_time_warp;
-    cout << "图像扭曲耗时: " << duration_time_warp.count() << " seconds." << endl;
+    // cout << "图像扭曲耗时: " << duration_time_warp.count() << " seconds." << endl;
 
     // 写入时加独占锁（阻塞所有读和写）
     std::unique_lock<std::shared_mutex> lock(rw_mutex_);
@@ -423,7 +423,7 @@ cv::Mat JHStitcher::processSubsequentGroupImpl
 
     cv::Mat resized_pano_result = Mat();
     resize(pano_result,resized_pano_result,cv::Size(static_cast<int>(pano_result.cols*scale_),static_cast<int>(pano_result.rows*scale_)),0,0,cv::INTER_LINEAR);
-    cout<<"resized_pano_result size = "<<resized_pano_result.size()<<endl;
+    // cout<<"resized_pano_result size = "<<resized_pano_result.size()<<endl;
     // 判断裁剪resized图像有效性
     if (data.crop_roi.empty() || data.crop_roi.x < 0 || data.crop_roi.y < 0 || 
         data.crop_roi.x + data.crop_roi.width > resized_pano_result.cols || 

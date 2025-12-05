@@ -105,6 +105,6 @@ def generate_launch_description():
         gnss_pub_node,
         ais_csv_pub_node,
         ais_sorted_pub_node,
-        # deep_sorvf_node
+        deep_sorvf_node
     ])
 

@@ -7,6 +7,7 @@
             "type": "ros2",
             "request": "launch",
             "target": "/home/tl/RV/src/marnav_vis/launch/Assemble_JH_launch.py",
+            "justMyCode": false,           // ← 关键：允许步入所有代码
             "subProcess": true  // 在子进程中运行
         },
         {
@@ -14,7 +15,28 @@
             "type": "python",
             "request": "launch",
             "program": "${workspaceFolder}/src/marnav_vis/marnav_vis/DeepSORVF_ros_v2.py",
+            "justMyCode": false,           // ← 关键：允许步入所有代码
             "console": "integratedTerminal"
+        },
+        {
+            "name": "ROS2: Debug DeepSORVF_v1",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/marnav_vis/marnav_vis/DeepSORVF_ros_v1.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,           // ← 关键：允许步入所有代码
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/src/marnav_vis:${env:PYTHONPATH}"
+            }
+        },
+        {
+            "name": "ROS2 Python Launch Debug",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/marnav_vis/marnav_vis/DeepSORVF_ros_v2.py",
+            "console": "integratedTerminal",
+            "justMyCode": false            // ← 也为这个配置添加
         }
     ]
 }

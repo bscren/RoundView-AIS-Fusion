@@ -122,7 +122,6 @@ def draw(add_img, df_draw, tf):
     i = 0
     
     for ind, inf in df_draw.iterrows():
-        
         ais = inf['ais']
         mmsi = inf['mmsi']
         sog = inf['sog']
@@ -236,7 +235,7 @@ class DRAW(object):
                                     fusion_current, self.w, self.h, self.wn, self.hn, Type = False)      
         self.df_draw = filter_inf(df_draw, self.w, self.h, self.w0, self.h0, self.wn, self.hn, self.tf)
         add_img = draw(add_img, self.df_draw, self.tf)
-        return add_img
+        return add_img, self.df_draw
 
     def draw_no_match_traj(self, pic):
         add_img = pic.copy()

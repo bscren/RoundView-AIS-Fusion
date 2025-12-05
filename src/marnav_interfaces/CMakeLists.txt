@@ -18,6 +18,8 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/AisVis.msg"
   "msg/Gga.msg"
   "msg/Rmc.msg"
+  "msg/VisiableTra.msg"
+  "msg/VisiableTraBatch.msg"
   DEPENDENCIES std_msgs builtin_interfaces   # 依赖的消息包
 )
 if(BUILD_TESTING)

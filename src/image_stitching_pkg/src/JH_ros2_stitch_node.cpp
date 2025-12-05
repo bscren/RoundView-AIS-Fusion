@@ -18,6 +18,10 @@
 // 服务头文件
 #include "detect_interfaces/srv/get_camera_params.hpp"
 
+// 船只跟踪消息体文件
+#include "marnav_interfaces/msg/visiable_tra.hpp"
+#include "marnav_interfaces/msg/visiable_tra_batch.hpp"
+
 #include "JHstitcher.hpp"
 #include <mutex>
 #include <shared_mutex>
@@ -33,6 +37,8 @@ using MultiDetectionsCamerasMsg = detect_interfaces::msg::MultiDetectionsCameras
 using MultiDetectionResultsMsg = detect_interfaces::msg::MultiDetectionResults;
 using JHjpgMsg = mycustface::msg::JHjpg;
 using GetCameraParamsSrv = detect_interfaces::srv::GetCameraParams;
+using VisiableTraMsg = marnav_interfaces::msg::VisiableTra;
+using VisiableTraBatchMsg = marnav_interfaces::msg::VisiableTraBatch;
 
 class JHRos2StitchNode : public rclcpp::Node {
 public:
@@ -42,14 +48,14 @@ public:
             rclcpp::CallbackGroupType::Reentrant);
         
         // 相机名称到索引的映射
-        std::unordered_map<std::string, int> cam_name_to_idx = {
+        cam_name_to_idx_ = {
             {"rtsp_image_0", 0},
             {"rtsp_image_1", 1},
             {"rtsp_image_2", 2}
         };            
         
         stitcher_ = std::make_unique<JHStitcher>(
-            cam_name_to_idx, //相机名称到索引的映射
+            cam_name_to_idx_, //相机名称到索引的映射
             this->declare_parameter("refresh_time", 2),
             this->declare_parameter("min_keypoints", 50),
             this->declare_parameter("min_confidence", 0.4),
@@ -108,7 +114,7 @@ public:
             std::bind(&JHRos2StitchNode::update_stitch_line, this),
             callback_group_);
 
-        // 初始化发布器
+        // 初始化拼接图像的发布器
         stitched_pub_ = this->create_publisher<JHjpgMsg>("image_topic_all", 10);
 
         // 初始化监控发布超时的定时器
@@ -118,6 +124,22 @@ public:
             std::bind(&JHRos2StitchNode::check_publish_timeout, this),
             callback_group_);   
 
+        // 初始化船只跟踪的订阅器（使用与发布者相同的QoS策略）
+        auto qos = rclcpp::QoS(rclcpp::KeepLast(3))
+            .reliability(rclcpp::ReliabilityPolicy::BestEffort);
+        rclcpp::SubscriptionOptions sub_options;
+        sub_options.callback_group = callback_group_;
+        visiable_tra_sub_ = this->create_subscription<VisiableTraBatchMsg>(
+            "/fus_trajectory_topic",
+            qos,
+            std::bind(&JHRos2StitchNode::visiable_tra_callback, this, std::placeholders::_1),
+            sub_options);
+        
+        // 初始化船只跟踪缓存队列，每个队列对应一个相机的船只跟踪消息
+        latest_visiable_tra_cache_.resize(cam_name_to_idx_.size());
+        for (size_t i = 0; i < cam_name_to_idx_.size(); i++) {
+            latest_visiable_tra_cache_[i] = std::queue<VisiableTraMsg>();
+        }
         // 创建获取相机参数服务
         get_camera_params_srv_ = this->create_service<GetCameraParamsSrv>(
             "get_camera_params",
@@ -157,9 +179,13 @@ private:
     std::shared_ptr<Subscriber> img1_sub_, img2_sub_, img3_sub_;
     std::shared_ptr<message_filters::Synchronizer<SyncPolicy>> sync_;
     rclcpp::Subscription<MultiDetectionsCamerasMsg>::SharedPtr yolo_sub_;
+    rclcpp::Subscription<VisiableTraBatchMsg>::SharedPtr visiable_tra_sub_;
     rclcpp::Publisher<JHjpgMsg>::SharedPtr stitched_pub_;
     rclcpp::Service<GetCameraParamsSrv>::SharedPtr get_camera_params_srv_;
     rclcpp::TimerBase::SharedPtr stitch_timer_;
+    
+    // 相机名称到索引的映射（成员变量）
+    std::unordered_map<std::string, int> cam_name_to_idx_;
 
     // 状态变量
     std::atomic<bool> is_first_group_processed_;
@@ -168,6 +194,12 @@ private:
 
     // 检测结果存储（按相机名称分类）的：锁类和对应保护对象
     std::mutex detections_mutex_;  // 保护检测结果的线程安全
+    // DetectionResult 是一个结构体（或者类），用于存储单个目标检测的结果。
+    // 一般该结构体包含如下字段：
+    // - std::string class_name;       // 检测到的类别名称
+    // - float confidence;             // 置信度
+    // - float x1, y1, x2, y2;         // 检测框的左上角与右下角的坐标
+    // 实际定义可能在 detection_result.h 或类似头文件里。
     std::unordered_map<std::string, std::vector<DetectionResult>> latest_detections_;
 
     std::thread stitch_thread; // 拼縫檢測的类成员变量，而非局部变量
@@ -176,6 +208,10 @@ private:
      // 存储筛选后的检测框（私有成员，仅内部修改）
     std::vector<BoxInfo> filtered_boxes;
 
+    // 存储船只跟踪消息的缓存队列,分为 cam_name_to_idx 个队列，每个队列对应一个相机的船只跟踪消息
+    std::vector<std::queue<VisiableTraMsg>> latest_visiable_tra_cache_;
+    std::mutex latest_visiable_tra_cache_mutex_;
+    
 
      // 新增：监控发布超时的变量
     rclcpp::TimerBase::SharedPtr watchdog_timer_;  // 定时检查的定时器
@@ -198,7 +234,7 @@ private:
         // 转换ROS图像消息为OpenCV格式
         std::vector<cv::Mat> images; 
         try {
-            cout<<"进了image callback ing"<<endl;
+            // cout<<"进了image callback ing"<<endl;
             images.push_back(cv_bridge::toCvShare(img1, "bgr8")->image.clone());
             images.push_back(cv_bridge::toCvShare(img2, "bgr8")->image.clone());
             images.push_back(cv_bridge::toCvShare(img3, "bgr8")->image.clone());
@@ -224,7 +260,7 @@ private:
             processSubsequentGroup(images);
             auto end_time = std::chrono::high_resolution_clock::now();
             auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count();
-            RCLCPP_INFO(this->get_logger(), "PSG处理耗时: %ld 毫秒", duration);
+            // RCLCPP_INFO(this->get_logger(), "PSG处理耗时: %ld 毫秒", duration);
         }
     }
 
@@ -238,9 +274,10 @@ private:
 
     // 后续处理组
     void processSubsequentGroup(std::vector<cv::Mat> images) {
-        cout<<"又进了process Subsequent Group"<<endl;
+        // cout<<"又进了process Subsequent Group"<<endl;
         // 调用拼接器处理时，传入检测数据（加锁保护）
-        std::lock_guard<std::mutex> lock(detections_mutex_); // 确保读取latest_detections_时线程安全
+        std::lock_guard<std::mutex> lock1(detections_mutex_); // 确保读取latest_detections_时线程安全
+        std::lock_guard<std::mutex> lock2(latest_visiable_tra_cache_mutex_); // 确保读取visiable_tra_cache_时线程安全
         cv::Mat stitched_image = stitcher_->processSubsequentGroupImpl(images,latest_detections_);
         if (stitched_image.empty()) {
             RCLCPP_ERROR(this->get_logger(), "后续处理失败，无法生成拼接图像");
@@ -315,6 +352,32 @@ private:
         }
     }
 
+    // 船只跟踪回调
+    // 将获得的跟踪消息保存到一个缓存队列中，在拼接图像发布时，将跟踪消息附带在jh_msg里也发布出去
+    void visiable_tra_callback(const VisiableTraBatchMsg::SharedPtr msg_batch) {
+        if (!msg_batch) {
+            RCLCPP_ERROR(this->get_logger(), "收到空的船只跟踪消息");
+            return;
+        }
+        else {
+            // 按照相机名称分别保存到对应的缓存队列中
+            std::lock_guard<std::mutex> lock(latest_visiable_tra_cache_mutex_);
+            latest_visiable_tra_cache_.clear();
+
+            // 遍历 msg_batch 中的每个 VisiableTraMsg，按照相机名称分别保存到对应的缓存队列中
+            for (const auto& msg : msg_batch->visiable_tra_list) {
+                // 容错处理：检查相机名称是否在映射中
+                auto it = cam_name_to_idx_.find(msg.camera_name);
+                if (it != cam_name_to_idx_.end()) {
+                    latest_visiable_tra_cache_[it->second].push(msg);
+                } else {
+                    RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 5000,
+                        "收到未知相机名称的轨迹消息: %s", msg.camera_name.c_str());
+                }
+            }
+
+        }
+    }
     // 发布拼接图像
     void publishStitchedImage(const cv::Mat& stitched_image, const std::vector<BoxInfo>& filtered_boxes) {
         if (stitched_image.empty()) {
@@ -325,10 +388,6 @@ private:
         cout<<"stitched_image.size() = "<<stitched_image.size()<<endl;
         // 0. 转换为8位图像
         cv::Mat stitched_8u;
-
-
-
-
 
         if (stitched_image.type() == CV_16SC3) {
             cv::Mat stitched_32s;
@@ -353,7 +412,7 @@ private:
         mycustface::msg::Header custom_header;
         // timestamp用当前时间的纳秒数（转换为long类型）
         custom_header.timestamp = this->get_clock()->now().nanoseconds();
-        cout<<"custom_header.timestamp = "<<custom_header.timestamp<<endl;
+        // cout<<"custom_header.timestamp = "<<custom_header.timestamp<<endl;
         // rclcpp::Time t(custom_header.timestamp);
         // RCLCPP_INFO(this->get_logger(), "转换为rclcpp::Time: %u 秒, %u 纳秒", t.seconds(), t.nanoseconds());
         custom_header.id = "stitched_image_";  // 自定义ID
@@ -370,7 +429,7 @@ private:
         params.push_back(cv::IMWRITE_JPEG_QUALITY);
         params.push_back(90); // 设置 JPEG 质量为 95%
         bool success = cv::imencode(".jpg", stitched_8u, jh_msg.picture, params);
-        cout<<"msg->picture.size() = "<<jh_msg.picture.size()<<endl;
+        // cout<<"msg->picture.size() = "<<jh_msg.picture.size()<<endl;
             if (success){                
                 jh_msg.size = jh_msg.picture.size();
                 // jh_msg.index = inx++;
@@ -424,7 +483,7 @@ private:
 
 
     void check_publish_timeout() {
-        cout<<"进了check_publish_timeout"<<endl;
+        // cout<<"进了check_publish_timeout"<<endl;
         // 若从未发布过消息（初始状态），直接返回
         if (watchdog_lastpub_time == 0) {
             RCLCPP_DEBUG(this->get_logger(), "尚未收到任何发布消息，等待中...");

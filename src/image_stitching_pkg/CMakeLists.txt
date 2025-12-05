@@ -26,6 +26,7 @@ find_package(yaml-cpp REQUIRED)
 # 显式查找detect_interfaces 和 mycustface自定义消息包
 find_package(detect_interfaces REQUIRED)
 find_package(mycustface REQUIRED)
+find_package(marnav_interfaces REQUIRED)
 
 # # 使用pkg-config查找OpenCV 4.8.0（替代find_package，解决cmake配置文件缺失问题）
 # find_package(PkgConfig REQUIRED)
@@ -155,6 +156,7 @@ ament_target_dependencies(JH_ROS_stitch
   cv_bridge
   detect_interfaces
   mycustface
+  marnav_interfaces
 )
 
 

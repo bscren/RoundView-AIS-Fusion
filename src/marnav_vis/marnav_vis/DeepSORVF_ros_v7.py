@@ -12,8 +12,9 @@ import pandas as pd
 import numpy as np
 import rclpy
 from rclpy.node import Node
+from rclpy.time import builtin_interfaces
 from sensor_msgs.msg import Image
-from marnav_interfaces.msg import AisBatch, Gnss
+from marnav_interfaces.msg import AisBatch, Gnss, VisiableTra, VisiableTraBatch
 from detect_interfaces.srv import GetCameraParams
 
 from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy
@@ -87,8 +88,8 @@ def multi_proc_worker(input_queue, output_queue, im_shape, t, max_dis, skip_inte
     fuspro = FUSPRO(max_dis, im_shape, t)
     dra = DRAW(im_shape, t)
 
-    # 缓存上一帧的结果
-    last_updated_bin = pd.DataFrame()
+    # 缓存上一窗口的融合轨迹
+    Last_Visiable_Tra = pd.DataFrame()
     # 记录上次处理时所属的时间窗口
     last_processed_window = -1
     while True:
@@ -120,25 +121,24 @@ def multi_proc_worker(input_queue, output_queue, im_shape, t, max_dis, skip_inte
                 # 3. FUS
                 Fus_tra, updated_bin = fuspro.fusion(AIS_vis, AIS_cur, Vis_tra, Vis_cur, current_timestamp)
                 # 4. DRAW
-                im = dra.draw_match_traj(cv_image, AIS_vis, AIS_cur, Vis_tra, Vis_cur, Fus_tra, timestamp=current_timestamp)
+                im, Visiable_Tra = dra.draw_match_traj(cv_image, AIS_vis, AIS_cur, Vis_tra, Vis_cur, Fus_tra, timestamp=current_timestamp)
                 # 更新配对关系
-                last_updated_bin = updated_bin
+                Last_Visiable_Tra = Visiable_Tra
                 # 更新窗口标记
                 last_processed_window = current_window
             else:
                 # print(f"no process_ais_vis_fus at timestamp {current_timestamp}, worker {cam_idx} processing task, pid={os.getpid()}")
                 im = dra.draw_no_match_traj(cv_image)
-                updated_bin = last_updated_bin
+                Visiable_Tra = Last_Visiable_Tra
             
             end_time = time.time()
             time_cost = end_time - start_time
             result = {
                 "cam_idx": cam_idx, 
                 "image": im, 
-                # "image": cv_image,
                 "timestamp": current_timestamp, 
-                "updated_bin": updated_bin,
-                # "updated_bin": pd.DataFrame(),
+                "Visiable_Tra": Visiable_Tra,
+                # "fus_trajectory": pd.DataFrame(),
                 "time_cost": time_cost
             }
             try:
@@ -193,6 +193,7 @@ class AisVisNode(Node):
                 ('camera_topics', ['/camera_image_topic_0', '/camera_image_topic_1', '/camera_image_topic_2']),
                 # ('camera_topics', ['/rtsp_image_0', '/rtsp_image_1', '/rtsp_image_2']),
                 ('aisbatch_topic', '/ais_batch_topic'),
+                ('fus_trajectory_topic', '/fus_trajectory_topic'),
                 ('gnss_topic', '/gnss_topic'),
                 ('input_fps', 15),
                 ('output_fps', 10),
@@ -206,7 +207,19 @@ class AisVisNode(Node):
         self.camera_para = camera_para
         self.im_shape = tuple(map(int, self.get_parameter('width_height').get_parameter_value().integer_array_value))
         self.camera_topics = self.get_parameter('camera_topics').get_parameter_value().string_array_value
+        
+        # 相机topic到标准名称的映射（与C++拼接节点保持一致）
+        self.camera_name_mapping = {
+            '/camera_image_topic_0': 'rtsp_image_0',
+            '/camera_image_topic_1': 'rtsp_image_1',
+            '/camera_image_topic_2': 'rtsp_image_2',
+            '/rtsp_image_0': 'rtsp_image_0',
+            '/rtsp_image_1': 'rtsp_image_1',
+            '/rtsp_image_2': 'rtsp_image_2'
+        }
+        
         self.aisbatch_topic = self.get_parameter('aisbatch_topic').get_parameter_value().string_value
+        self.fus_trajectory_topic = self.get_parameter('fus_trajectory_topic').get_parameter_value().string_value
         self.gnss_topic = self.get_parameter('gnss_topic').get_parameter_value().string_value
         self.input_fps = self.get_parameter('input_fps').get_parameter_value().integer_value
         self.t = int(1000 / self.input_fps)
@@ -228,8 +241,11 @@ class AisVisNode(Node):
 
         self.num_cameras = len(self.camera_topics)
         self.bin_inf = [pd.DataFrame(columns=['ID', 'mmsi', 'timestamp', 'match']) for _ in range(self.num_cameras)]
+        self.fus_trajectory = [pd.DataFrame() for _ in range(self.num_cameras)]
+        # 初始化每个相机的最新处理图像为空白图像
+        blank_image = np.zeros((self.im_shape[1], self.im_shape[0], 3), dtype=np.uint8)
         self.latest_processed_images = {
-            f'cam{i}': None for i in range(self.num_cameras)
+            self.camera_topics[i]: blank_image.copy() for i in range(self.num_cameras)
         }
         # ============ 多进程池核心部分（每摄像头一个进程） ===============
         self.mp_input_queues = [Queue(maxsize=10) for _ in range(self.num_cameras)]
@@ -258,6 +274,7 @@ class AisVisNode(Node):
             depth=3
         )
 
+        # 订阅相机图像和对应的同步器
         self.camera_subscribers = []
         for topic in self.get_parameter('camera_topics').get_parameter_value().string_array_value:
             sub = Subscriber(self, Image, topic, qos_profile=qos_profile)
@@ -285,13 +302,24 @@ class AisVisNode(Node):
         # 定时刷新显示窗口
         self.window_timer = self.create_timer(1/self.output_fps, self.refresh_window_callback)
 
+        # 定时向外发布轨迹信息的发布器
+        self.fus_trajectory_publisher = self.create_publisher(VisiableTraBatch, self.fus_trajectory_topic, qos_profile)
+        
+        # 定时发布轨迹（1秒一次）
+        self.trajectory_publish_timer = self.create_timer(1.0, self.publish_trajectory_callback)
+
 
     # =================== 回调函数 ====================
     def synchronized_camera_callback(self, *msgs):
         # 收集输入数据封包推送进多进程队列
-        if self.aisbatch_cache.empty or not self.camera_pos_para:
-            self.get_logger().info("等待AIS数据或GNSS数据更新相机位置参数，暂不处理图像帧")
+        # 检查相机位置参数是否已初始化（必需）
+        if not self.camera_pos_para:
+            self.get_logger().warning("等待GNSS数据更新相机位置参数，暂不处理图像帧", throttle_duration_sec=5.0)
             return
+        
+        # 检查AIS数据（非必需，仅警告）
+        if self.aisbatch_cache.empty:
+            self.get_logger().warning("未收到AIS数据，将仅使用视觉跟踪模式", throttle_duration_sec=5.0)
         # self.get_logger().info(f"收到同步相机帧，共{len(msgs)}帧")
         cv_images = [self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8') for msg in msgs]
         current_timestamp = msgs[0].header.stamp.sec * 1000 + msgs[0].header.stamp.nanosec // 1000000
@@ -356,23 +384,20 @@ class AisVisNode(Node):
         for idx, cam_topic in enumerate(self.camera_topics):
             horizontal_orientation = (msg.horizontal_orientation + (idx - 1) * 60) % 360  # 中间相机不变，左右相机调整±60度，若超出360度范围，进行归一化
             # self.camera_pos_para[idx] = {
-            #     "longitude": msg.longitude,
-            #     "latitude": msg.latitude,
-            #     "horizontal_orientation": horizontal_orientation,
-            #     "vertical_orientation": msg.vertical_orientation,
-            #     "camera_height": msg.camera_height,
-            #     'fov_hor': self.camera_para.get(idx, {}).get('fov_hor', None),
-            #     'fov_ver': self.camera_para.get(idx, {}).get('fov_ver', None),
-            #     'focal': self.camera_para.get(idx, {}).get('focal', None),
-            #     'aspect': self.camera_para.get(idx, {}).get('aspect', None),
-            #     'ppx': self.camera_para.get(idx, {}).get('ppx', None),
-            #     'ppy': self.camera_para.get(idx, {}).get('ppy', None),
-            #     'R': self.camera_para.get(idx, {}).get('R', None),
-            #     't': self.camera_para.get(idx, {}).get('t', None),
-            #     'K': self.camera_para.get(idx, {}).get('K', None)
+            #     "longitude","latitude","horizontal_orientation""vertical_orientation"
+            #     "camera_height"
+            #     'fov_hor'
+            #     'fov_ver'
+            #     'focal'
+            #     'aspect'
+            #     'ppx'
+            #     'ppy'
+            #     'R'
+            #     't'
+            #     'K'
             #     # "intrinsics": self.camera_para.get(cam_topic, {})
             # }
-            # DEBUG 
+    # ================================== DEBUG ==================================
             # Lon	Lat	Horizontal Orientation	Vertical Orientation	Camera Height	Horizontal FoV	Vertical FoV	fx	fy	u0	v0
             # 114.32583	30.60139	7	-1	20	55	30.94	2391.26	2446.89	1305.04	855.214
             self.camera_pos_para[idx] = {
@@ -388,8 +413,7 @@ class AisVisNode(Node):
                 'u0': 1305.04,
                 'v0': 855.214,
             }
-
-
+    # ================================== DEBUG ==================================
 
     def refresh_window_callback(self):
         # 回收多进程输出结果
@@ -401,18 +425,12 @@ class AisVisNode(Node):
                         self.get_logger().error(f"子进程Camera {result['cam_idx']}出错: {result['error']}")
                         continue
                     cam_idx = result["cam_idx"]
-                    time_cost = result.get("time_cost", 0)
+                    self.fus_trajectory[cam_idx] = result["Visiable_Tra"]
+                    self.fus_trajectory[cam_idx]['timestamp'] = result["timestamp"]
+                    # time_cost = result.get("time_cost", 0)
                     # if time_cost is not None:
                     #     self.get_logger().info(f"Camera {cam_idx}  Time cost: {time_cost} seconds")
-                    im = result["image"]
-                    updated_bin = result.get("updated_bin", None)
-                    self.latest_processed_images[f'cam{cam_idx}'] = im
-                    if updated_bin is not None:
-                        if cam_idx < len(self.bin_inf):
-                            self.bin_inf[cam_idx] = updated_bin
-                        else:
-                            self.bin_inf.extend([pd.DataFrame()]*(cam_idx - len(self.bin_inf) + 1))
-                            self.bin_inf[cam_idx] = updated_bin
+                    self.latest_processed_images[self.camera_topics[cam_idx]] = result["image"]
             except Exception:
                 pass  # 当前相机队列空，继续下一个
         
@@ -420,12 +438,10 @@ class AisVisNode(Node):
         for i, p in enumerate(self.workers):
             if not p.is_alive():
                 self.get_logger().error(f"Worker {i} (PID {p.pid}) 已死亡！")
+
         # 拼接图像并显示
         current_images = self.latest_processed_images.copy()
-        for cam_name, img in current_images.items():
-            if img is None:
-                return
-        stitched_image = cv2.hconcat([current_images[f'cam{idx}'] for idx in range(self.num_cameras)])
+        stitched_image = cv2.hconcat([current_images[cam_name] for cam_name in self.camera_topics])
         current_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
         cv2.putText(
             stitched_image,
@@ -438,6 +454,68 @@ class AisVisNode(Node):
         )
         cv2.imshow(self.name, stitched_image)
         cv2.waitKey(1)
+
+    def publish_trajectory_callback(self):
+        """定时发布融合轨迹（1秒一次）"""
+        msg_batch = VisiableTraBatch()
+        msg_batch.visiable_tra_list = []
+        
+        for cam_idx in range(self.num_cameras):
+            if self.fus_trajectory[cam_idx].empty:
+                continue  # 跳过空的轨迹数据
+            
+            # 使用第一个轨迹的时间戳作为batch的时间戳
+            if not self.fus_trajectory[cam_idx].empty:
+                first_tra = self.fus_trajectory[cam_idx].iloc[0]
+                batch_timestamp_ms = int(first_tra.get('timestamp', 0))
+                msg_batch.timestamp.sec = batch_timestamp_ms // 1000
+                msg_batch.timestamp.nanosec = (batch_timestamp_ms % 1000) * 1000000
+
+            for idx, tra in self.fus_trajectory[cam_idx].iterrows():
+                try:
+                    msg = VisiableTra()
+                    # 使用映射后的相机名称（与C++拼接节点保持一致）
+                    topic_name = self.camera_topics[cam_idx]
+                    msg.camera_name = self.camera_name_mapping.get(topic_name, topic_name)
+                    # 将毫秒时间戳转换为 ROS Time (sec + nanosec)
+                    timestamp_ms = int(tra.get('timestamp', 0))
+                    msg.timestamp.sec = timestamp_ms // 1000
+                    msg.timestamp.nanosec = (timestamp_ms % 1000) * 1000000
+                    
+                    # AIS相关字段，如果不存在则使用默认值
+                    msg.ais = 0 if pd.isna(tra.get('ais')) or tra.get('ais') is None else int(tra['ais'])
+                    
+                    # mmsi 必须是无符号整数 [0, 4294967295]，负数转为0
+                    mmsi_value = tra.get('mmsi', 0)
+                    if pd.isna(mmsi_value) or mmsi_value < 0:
+                        msg.mmsi = 0
+                    else:
+                        msg.mmsi = int(mmsi_value)
+                    
+                    # 速度和航向，负数转为0.0
+                    sog_value = tra.get('sog', 0.0)
+                    msg.sog = float(sog_value) if not pd.isna(sog_value) and sog_value >= 0 else 0.0
+                    cog_value = tra.get('cog', 0.0)
+                    msg.cog = float(cog_value) if not pd.isna(cog_value) and cog_value >= 0 else 0.0
+                    
+                    # 经纬度，负数可能是有效的（南纬、西经），只检查NaN
+                    msg.lat = float(tra.get('lat', 0.0)) if not pd.isna(tra.get('lat')) else 0.0
+                    msg.lon = float(tra.get('lon', 0.0)) if not pd.isna(tra.get('lon')) else 0.0
+                    
+                    # 视觉检测框坐标（必需字段）
+                    msg.box_x1 = float(tra.get('box_x1', 0.0))
+                    msg.box_y1 = float(tra.get('box_y1', 0.0))
+                    msg.box_x2 = float(tra.get('box_x2', 0.0))
+                    msg.box_y2 = float(tra.get('box_y2', 0.0))
+                    
+                    msg_batch.visiable_tra_list.append(msg)
+                except Exception as e:
+                    self.get_logger().warning(f"发布轨迹消息时出错: {e}")
+        
+        # 只有在有数据时才发布
+        if len(msg_batch.visiable_tra_list) > 0:
+            self.fus_trajectory_publisher.publish(msg_batch)
+            # self.get_logger().info(f"发布了 {len(msg_batch.visiable_tra_list)} 个轨迹")
 
     def destroy_node(self):
         # 关闭所有多进程
