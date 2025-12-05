@@ -19,7 +19,7 @@
 #include "detect_interfaces/srv/get_camera_params.hpp"
 
 // 船只跟踪消息体文件
-#include "marnav_interfaces/msg/VisiableTra.hpp"
+#include "marnav_interfaces/msg/visiable_tra.hpp"
 
 #include "JHstitcher.hpp"
 #include <mutex>

@@ -22,6 +22,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <image_transport/image_transport.hpp>
 #include <cv_bridge/cv_bridge.h>
+#include <sensor_msgs/msg/image.hpp>
 
 const int input_frame_rate = 20; // 相机设置的输入帧率
 const int target_frame_rate = 15; // 目标帧率，测试结果为与相机设置的输入帧率一致表现最好
@@ -158,7 +159,7 @@ int main(int argc, char * argv[])
     // 初始化ROS 2
     rclcpp::init(argc, argv);
     auto node = rclcpp::Node::make_shared("rtsp_video_publisher");
-    std::vector<image_transport::Publisher> publishers;
+    std::vector<rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr> publishers;
 
     // 解析命令行参数，生成RTSP URL列表
     std::vector<std::string> rtsp_urls;
@@ -175,10 +176,17 @@ int main(int argc, char * argv[])
         rtsp_urls.push_back(url);
     }
 
-    // 为每个摄像头创建发布者
+    // 为每个摄像头创建发布者（配置 BestEffort QoS 策略）
+    // 图像传输使用 BestEffort 可靠性策略，适合高频率、大数据量传输
+    auto image_qos = rclcpp::QoS(rclcpp::KeepLast(1))
+        .reliability(rclcpp::ReliabilityPolicy::BestEffort)
+        .durability(rclcpp::DurabilityPolicy::Volatile);
+    
     for (size_t i = 0; i < rtsp_urls.size(); ++i) {
-        image_transport::ImageTransport it(node);
-        auto pub = it.advertise("rtsp_image_" + std::to_string(i), 1);
+        auto pub = node->create_publisher<sensor_msgs::msg::Image>(
+            "rtsp_image_" + std::to_string(i)
+            image_qos
+        );
         publishers.push_back(pub);
     }
 

@@ -84,10 +84,15 @@ public:
         RCLCPP_INFO(this->get_logger(), "使用实际系统时间");
         }
         
-        // 初始化订阅器
-        img1_sub_ = std::make_shared<Subscriber>(this, "/rtsp_image_0");
-        img2_sub_ = std::make_shared<Subscriber>(this, "/rtsp_image_1");
-        img3_sub_ = std::make_shared<Subscriber>(this, "/rtsp_image_2");
+        // 初始化订阅器（配置QoS策略以匹配发布者）
+        // 图像话题通常使用 BEST_EFFORT 可靠性策略
+        auto image_qos = rclcpp::QoS(rclcpp::KeepLast(10))
+            .reliability(rclcpp::ReliabilityPolicy::BestEffort)
+            .durability(rclcpp::DurabilityPolicy::Volatile);
+        
+        img1_sub_ = std::make_shared<Subscriber>(this, "/camera_image_topic_0", image_qos.get_rmw_qos_profile());
+        img2_sub_ = std::make_shared<Subscriber>(this, "/camera_image_topic_1", image_qos.get_rmw_qos_profile());
+        img3_sub_ = std::make_shared<Subscriber>(this, "/camera_image_topic_2", image_qos.get_rmw_qos_profile());
 
         // 初始化YOLO检测结果订阅器
         rclcpp::SubscriptionOptions options;
@@ -138,7 +143,7 @@ public:
         // 初始化船只跟踪缓存队列，每个队列对应一个相机的船只跟踪消息
         latest_visiable_tra_cache_.resize(cam_name_to_idx_.size());
         for (size_t i = 0; i < cam_name_to_idx_.size(); i++) {
-            latest_visiable_tra_cache_[i] = std::queue<VisiableTraMsg>();
+            latest_visiable_tra_cache_[i] = std::queue<VisiableTra>();
         }
         // 创建获取相机参数服务
         get_camera_params_srv_ = this->create_service<GetCameraParamsSrv>(
@@ -207,9 +212,12 @@ private:
 
      // 存储筛选后的检测框（私有成员，仅内部修改）
     std::vector<BoxInfo> filtered_boxes;
+    // 存储投影后的检测框和对应的AIS信息
+    std::vector<TrajectoryBoxInfo> trajectory_boxes;
+    
 
     // 存储船只跟踪消息的缓存队列,分为 cam_name_to_idx 个队列，每个队列对应一个相机的船只跟踪消息
-    std::vector<std::queue<VisiableTraMsg>> latest_visiable_tra_cache_;
+    std::vector<std::queue<VisiableTra>> latest_visiable_tra_cache_;
     std::mutex latest_visiable_tra_cache_mutex_;
     
 
@@ -278,7 +286,7 @@ private:
         // 调用拼接器处理时，传入检测数据（加锁保护）
         std::lock_guard<std::mutex> lock1(detections_mutex_); // 确保读取latest_detections_时线程安全
         std::lock_guard<std::mutex> lock2(latest_visiable_tra_cache_mutex_); // 确保读取visiable_tra_cache_时线程安全
-        cv::Mat stitched_image = stitcher_->processSubsequentGroupImpl(images,latest_detections_);
+        cv::Mat stitched_image = stitcher_->processSubsequentGroupImpl(images,latest_detections_,latest_visiable_tra_cache_);
         if (stitched_image.empty()) {
             RCLCPP_ERROR(this->get_logger(), "后续处理失败，无法生成拼接图像");
             return;
@@ -287,9 +295,11 @@ private:
         // 获取筛选后的检测框（通过拼接器的getter接口）
         const std::vector<BoxInfo>& filtered_boxes = stitcher_->getFilteredBoxes();
         
+        // 获取投影后的轨迹框（通过拼接器的getter接口）
+        const std::vector<TrajectoryBoxInfo>& trajectory_boxes = stitcher_->getTrajectoryBoxes();
 
-        // 发布拼接图像（同时传入检测框）
-        publishStitchedImage(stitched_image, filtered_boxes);
+        // 发布拼接图像（同时传入检测框和轨迹框）
+        publishStitchedImage(stitched_image, filtered_boxes, trajectory_boxes);
     }
 
     // 定时更新拼缝线
@@ -338,6 +348,9 @@ private:
         // 转换检测结果格式
         for (const auto& cam_detections : msg->multicamdetections) {
             std::vector<DetectionResult> results;
+            // results是DetectionResult类型的vector，
+            // 而cam_detections.results是detect_interfaces::msg::DetectionResult类型的vector
+            // 因此需要进行转换
             for (const auto& det : cam_detections.results) {
                 DetectionResult dr;
                 dr.class_name = det.class_name;
@@ -359,27 +372,56 @@ private:
             RCLCPP_ERROR(this->get_logger(), "收到空的船只跟踪消息");
             return;
         }
-        else {
-            // 按照相机名称分别保存到对应的缓存队列中
-            std::lock_guard<std::mutex> lock(latest_visiable_tra_cache_mutex_);
-            latest_visiable_tra_cache_.clear();
-
-            // 遍历 msg_batch 中的每个 VisiableTraMsg，按照相机名称分别保存到对应的缓存队列中
-            for (const auto& msg : msg_batch->visiable_tra_list) {
-                // 容错处理：检查相机名称是否在映射中
-                auto it = cam_name_to_idx_.find(msg.camera_name);
-                if (it != cam_name_to_idx_.end()) {
-                    latest_visiable_tra_cache_[it->second].push(msg);
-                } else {
-                    RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 5000,
-                        "收到未知相机名称的轨迹消息: %s", msg.camera_name.c_str());
-                }
+        
+        // 按照相机名称分别保存到对应的缓存队列中
+        std::lock_guard<std::mutex> lock(latest_visiable_tra_cache_mutex_);
+        
+        // 清空每个相机的队列（保留最新的批次消息）
+        for (auto& queue : latest_visiable_tra_cache_) {
+            while (!queue.empty()) {
+                queue.pop();
             }
+        }
 
+        // 遍历 msg_batch 中的每个 VisiableTraMsg，
+        // 然后将 VisiableTraMsg 格式转化为 VisiableTra 格式，
+        // 按照相机名称分别保存到对应的缓存队列中
+        for (const auto& msg : msg_batch->visiable_tra_list) {
+            // 容错处理：检查相机名称是否在映射中
+            auto it = cam_name_to_idx_.find(msg.camera_name);
+            if (it != cam_name_to_idx_.end()) {
+                int cam_idx = it->second;  // 获取相机索引
+                
+                // 进行格式转换
+                VisiableTra vt;
+                vt.camera_name = msg.camera_name;
+                // 将 builtin_interfaces::Time 转换为纳秒（int64_t）
+                vt.timestamp_ns = static_cast<int64_t>(msg.timestamp.sec) * 1000000000LL + 
+                                  static_cast<int64_t>(msg.timestamp.nanosec);
+                vt.ais_or_not = msg.ais;
+                vt.mmsi = msg.mmsi;
+                vt.sog = msg.sog;
+                vt.cog = msg.cog;
+                vt.latitude = msg.lat;
+                vt.longitude = msg.lon;
+                vt.box_x1 = msg.box_x1;
+                vt.box_y1 = msg.box_y1;
+                vt.box_x2 = msg.box_x2;
+                vt.box_y2 = msg.box_y2;
+                
+                // 关键步骤：将转换后的消息push到对应相机的队列中
+                latest_visiable_tra_cache_[cam_idx].push(vt);
+                
+            } else {
+                RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 5000,
+                    "收到未知相机名称的轨迹消息: %s", msg.camera_name.c_str());
+            }
         }
     }
     // 发布拼接图像
-    void publishStitchedImage(const cv::Mat& stitched_image, const std::vector<BoxInfo>& filtered_boxes) {
+    void publishStitchedImage(const cv::Mat& stitched_image, 
+                             const std::vector<BoxInfo>& filtered_boxes,
+                             const std::vector<TrajectoryBoxInfo>& trajectory_boxes) {
         if (stitched_image.empty()) {
             RCLCPP_ERROR(this->get_logger(), "拼接图像为空，无法发布");
             return;
@@ -402,8 +444,7 @@ private:
         }
         
 // 只为了好看：
-
-        stitched_8u = stitched_8u(cv::Rect(0,0,stitched_image.cols,stitched_image.rows*6/7));
+stitched_8u = stitched_8u(cv::Rect(0,0,stitched_image.cols,stitched_image.rows*6/7));
 
         // 1. 构建自定义消息对象
         JHjpgMsg jh_msg;
@@ -423,7 +464,7 @@ private:
 
         // 4. 填充message字段（描述信息）
         // jh_msg.message = "stitched image from 3 cameras";
-        JHmessagetoJson(jh_msg.message,filtered_boxes);
+        JHmessagetoJson(jh_msg.message, filtered_boxes, trajectory_boxes);
 
         std::vector<int> params;
         params.push_back(cv::IMWRITE_JPEG_QUALITY);
@@ -446,22 +487,18 @@ private:
                 jh_msg.size, jh_msg.index);
     }
 
-    void JHmessagetoJson(std::string& message, const std::vector<BoxInfo>& boxes)
+    void JHmessagetoJson(std::string& message, 
+                        const std::vector<BoxInfo>& boxes,
+                        const std::vector<TrajectoryBoxInfo>& trajectory_boxes)
     {
-        if (boxes.empty()) {
-        message = "[]";
-        // cout<<"这一帧JHmessagetoJson没找到"<<endl;
-        return;
-        }
-        else {
-        // cout<<"这一帧JHmessagetoJson找到了"<<endl;
-        }
-        // 构建 JSON 字符串
-        message += "[";// 初始化 JSON 字符串，用 [ 开头，因为最终要构造 JSON 数组（多个检测结果）
-        // std::string jsonStr = "["; 
-        for (size_t i = 0; i < boxes.size(); i++) {
+        // 构建包含检测框和轨迹框的 JSON 对象
+        message = "{";
+        
+        // 1. 添加检测框数组
+        message += "\"detections\":[";
+        if (!boxes.empty()) {
+            for (size_t i = 0; i < boxes.size(); i++) {
                 const auto& box = boxes[i];
-                //构建单个检测框的JSON对象
                 message += "{";
                 message += "\"class_name\":\"" + box.class_name + "\",";
                 message += "\"confidence\":" + std::to_string(box.confidence) + ",";
@@ -469,16 +506,44 @@ private:
                 message += "\"y1\":" + std::to_string(box.top_left.y) + ",";
                 message += "\"x2\":" + std::to_string(box.bottom_right.x) + ",";
                 message += "\"y2\":" + std::to_string(box.bottom_right.y) + ",";
-                message += "\"random_id\":" + std::to_string(rand()%1000000); // 添加随机ID字段
-                message += "}";          
-                // 添加逗号分隔（最后一个元素不加）
+                message += "\"random_id\":" + std::to_string(rand()%1000000);
+                message += "}";
                 if (i != boxes.size() - 1) {
                     message += ",";
                 }
-                // 拼接成一个 JSON 对象 { "p1x":x, "p1y":y, ... }
+            }
         }
-        message += "]"; // 循环多次后用 ] 收尾就会变成 JSON 数组
-        // cout<<"完成了一次JHmessagetoJson"<<endl;
+        message += "],";
+        
+        // 2. 添加轨迹框数组（包含AIS信息）
+        message += "\"trajectories\":[";
+        if (!trajectory_boxes.empty()) {
+            for (size_t i = 0; i < trajectory_boxes.size(); i++) {
+                const auto& traj = trajectory_boxes[i];
+                message += "{";
+                message += "\"class_name\":\"" + traj.class_name + "\",";
+                message += "\"x1\":" + std::to_string(traj.top_left.x) + ",";
+                message += "\"y1\":" + std::to_string(traj.top_left.y) + ",";
+                message += "\"x2\":" + std::to_string(traj.bottom_right.x) + ",";
+                message += "\"y2\":" + std::to_string(traj.bottom_right.y) + ",";
+                message += "\"mmsi\":" + std::to_string(traj.mmsi) + ",";
+                message += "\"sog\":" + std::to_string(traj.sog) + ",";
+                message += "\"cog\":" + std::to_string(traj.cog) + ",";
+                message += "\"lat\":" + std::to_string(traj.lat) + ",";
+                message += "\"lon\":" + std::to_string(traj.lon) + ",";
+                message += "\"random_id\":" + std::to_string(rand()%1000000);
+                message += "}";
+                if (i != trajectory_boxes.size() - 1) {
+                    message += ",";
+                }
+            }
+        }
+        message += "]";
+        
+        message += "}"; // 结束 JSON 对象
+        
+        // cout<<"完成了一次JHmessagetoJson，检测框: " << boxes.size() 
+        //     << ", 轨迹框: " << trajectory_boxes.size() << endl;
     }
 
 

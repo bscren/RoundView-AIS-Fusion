@@ -63,6 +63,35 @@ struct BoxInfo {
     float confidence;
 };
 
+// 定义跟踪框消息类型
+struct VisiableTra {
+    std::string camera_name;
+    int64_t timestamp_ns;  // 时间戳（纳秒），使用标准C++类型，避免依赖ROS
+    int ais_or_not;
+    int mmsi;
+    double sog;
+    double cog;
+    double latitude;
+    double longitude;
+    double box_x1;
+    double box_y1;
+    double box_x2;
+    double box_y2;
+};
+
+// 
+struct TrajectoryBoxInfo {
+    cv::Point2i top_left;
+    cv::Point2i bottom_right;
+    std::string class_name;
+    int mmsi;
+    double sog;
+    double cog;
+    double lat;
+    double lon;
+};
+
+
 class JHStitcher {
 public:
     // 构造函数，接收拼接相关参数
@@ -91,7 +120,9 @@ public:
     bool processFirstGroupImpl(const std::vector<cv::Mat>& images);
 
     // 后续处理图像组具体，使用现有变换数据
-    cv::Mat processSubsequentGroupImpl(const std::vector<cv::Mat>& images,const std::unordered_map<std::string, std::vector<DetectionResult>>& latest_detections_);
+    cv::Mat processSubsequentGroupImpl(const std::vector<cv::Mat>& images,\
+        const std::unordered_map<std::string, std::vector<DetectionResult>>& latest_detections_, \
+        const std::vector<std::queue<VisiableTra>>& latest_visiable_tra_cache_);
 
     // 检测并更新拼缝线
     void detectStitchLine();
@@ -103,6 +134,13 @@ public:
         const std::unordered_map<std::string, std::vector<DetectionResult>>& latest_detections_
     );
 
+    // 投影跟踪框到拼接图上
+    void CalibTrajInPano(
+        cv::Mat& pano,
+        const TransformationData& data,
+        const std::vector<std::queue<VisiableTra>>& latest_visiable_tra_cache_
+    );  
+
     // 获取cam_name_to_idx_映射（getter接口）
     const std::unordered_map<std::string, int>& getCamNameToIdx() const { return cam_name_to_idx_; }
     
@@ -111,6 +149,9 @@ public:
 
     // 获取筛选后的检测框（getter接口）
     const std::vector<BoxInfo>& getFilteredBoxes() const { return filtered_boxes_;}
+
+    // 获取投影后的轨迹框（getter接口）
+    const std::vector<TrajectoryBoxInfo>& getTrajectoryBoxes() const { return trajectory_boxes_;}
 
     // 获取变换数据（getter接口）
     const TransformationData& getTransformationData() const { return transformation_data_; }
@@ -157,6 +198,9 @@ private:
 
     // yolo检测框筛选结果
     std::vector<BoxInfo> filtered_boxes_;  // 公有化的检测框容器
+
+    // 轨迹框筛选结果（包含AIS信息）
+    std::vector<TrajectoryBoxInfo> trajectory_boxes_;  // 轨迹框容器
 
     // 检测结果存储（按相机名称分类）由ros节点处理
 

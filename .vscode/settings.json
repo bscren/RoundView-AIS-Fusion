@@ -1,19 +1,14 @@
 {
-    "C_Cpp.default.compileCommands": "${workspaceFolder}/compile_commands.json",
-    "C_Cpp.default.cppStandard": "c++17",
-    "C_Cpp.default.cStandard": "c17",
-    "C_Cpp.default.includePath": [
-        "${workspaceFolder}/**",
-        "/opt/ros/humble/include/**",
-        "/usr/include/opencv4/**",
-        "${workspaceFolder}/install/*/include/**",
-        "${workspaceFolder}/build/*/rosidl_generator_cpp/**"
-    ],
+    "C_Cpp.intelliSenseEngine": "disabled",
+    "C_Cpp.autocomplete": "disabled",
+    "C_Cpp.errorSquiggles": "disabled",
+    "clangd.path": "/usr/bin/clangd-14",
     "clangd.arguments": [
         "--compile-commands-dir=${workspaceFolder}",
         "--background-index",
-        "--clang-tidy",
-        "--header-insertion=iwyu"
+        "--query-driver=/usr/bin/g++",
+        "--header-insertion=iwyu",
+        "--completion-style=detailed"
     ],
     "files.associations": {
         "*.hpp": "cpp",

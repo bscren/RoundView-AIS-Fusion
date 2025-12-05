@@ -371,7 +371,8 @@ bool JHStitcher::processFirstGroupImpl(const std::vector<cv::Mat>& images) {
 
 cv::Mat JHStitcher::processSubsequentGroupImpl
     (const std::vector<cv::Mat>& images,
-     const std::unordered_map<std::string, std::vector<DetectionResult>>& latest_detections_) 
+     const std::unordered_map<std::string, std::vector<DetectionResult>>& latest_detections_,  
+     const std::vector<std::queue<VisiableTra>>& latest_visiable_tra_cache_)
     {
     // 新建data用于规避拼接线检测时的读写冲突
         TransformationData data;
@@ -435,6 +436,8 @@ cv::Mat JHStitcher::processSubsequentGroupImpl
     // cout<<"开始过滤检测框"<<endl;
     filtBoxes(resized_pano_result,data,latest_detections_);
     
+    // 开始处理轨迹框，主要是依据相机拼接的内参和变换参数，将各个相机的检测框投影到拼接图上
+    CalibTrajInPano(resized_pano_result, data,latest_visiable_tra_cache_);        
 
     // cout<<"image_warp size = "<<images_warp[0].size()<<endl;
     // cout<<"单张图片大小 = "<<images[0].size()<<endl;
@@ -682,6 +685,105 @@ void JHStitcher::filtBoxes(
 
 }
 
+// 功能和 filtBoxes 类似，输入也类似
+void JHStitcher::CalibTrajInPano(
+    cv::Mat& pano,
+    const TransformationData& data,
+    const std::vector<std::queue<VisiableTra>>& latest_visiable_tra_cache_    
+)
+{
+    // 0. 清空之前的轨迹框（避免累积旧数据）
+    trajectory_boxes_.clear();
+    
+    cout << "CalibTrajInPano 开始处理轨迹框" << endl;
+
+    // 1. 计算全局ROI（与filtBoxes中相同的逻辑）
+    Rect dst_roi = Rect(data.corners[0], data.sizes[0]);
+    for (size_t i = 1; i < data.corners.size(); ++i) {
+        dst_roi |= Rect(data.corners[i], data.sizes[i]);
+    }
+
+    // 2. 遍历每个相机的可见轨迹队列
+    for (const auto& [cam_name, cam_idx] : cam_name_to_idx_) {
+        // 检查索引是否有效
+        if (cam_idx >= latest_visiable_tra_cache_.size()) {
+            cout << "警告: 相机索引 " << cam_idx << " 超出范围" << endl;
+            continue;
+        }
+
+        // 获取该相机的内参矩阵
+        Mat K;
+        data.cameras[cam_idx].K().convertTo(K, CV_32F);
+
+        // 拷贝队列以便遍历（因为参数是const引用）
+        std::queue<VisiableTra> single_cam_visiable_tra_queue = latest_visiable_tra_cache_[cam_idx];
+        
+        cout << "相机 " << cam_name << " (索引 " << cam_idx << ") 的轨迹数量: " 
+             << single_cam_visiable_tra_queue.size() << endl;
+
+        // 3. 遍历该相机的所有轨迹消息
+        while (!single_cam_visiable_tra_queue.empty()) {
+            VisiableTra visiable_tra = single_cam_visiable_tra_queue.front();
+            single_cam_visiable_tra_queue.pop();
+
+            // 4. 轨迹框的两个对角点（左上角和右下角）
+            std::vector<cv::Point2f> four_corners(2);
+            four_corners[0] = cv::Point2f(visiable_tra.box_x1, visiable_tra.box_y1); // 左上角
+            four_corners[1] = cv::Point2f(visiable_tra.box_x2, visiable_tra.box_y2); // 右下角
+
+            // 5. 投影轨迹框的角点到拼接图坐标系
+            std::vector<cv::Point2f> four_corners_warp(2);
+            for (int j = 0; j < 2; ++j) {
+                four_corners_warp[j] = data.warper->warpPoint(four_corners[j], K, data.cameras[cam_idx].R);
+            }
+
+            // 6. 坐标转换：基于投影后的角点，叠加偏移并缩放（与filtBoxes相同的逻辑）
+            cv::Point2i top_left(
+                cvRound((four_corners_warp[0].x - dst_roi.x) * scale_),
+                cvRound((four_corners_warp[0].y - dst_roi.y) * scale_)
+            );
+            cv::Point2i bottom_right(
+                cvRound((four_corners_warp[1].x - dst_roi.x) * scale_),
+                cvRound((four_corners_warp[1].y - dst_roi.y) * scale_)
+            );
+
+            // 7. 确保检测框坐标非负且有效
+            top_left.x = std::max(0, top_left.x);
+            top_left.y = std::max(0, top_left.y);
+            bottom_right.x = std::max(top_left.x + 1, bottom_right.x);
+            bottom_right.y = std::max(top_left.y + 1, bottom_right.y);
+
+            // 8. 构建TrajectoryBoxInfo对象并保存
+            TrajectoryBoxInfo traj_box;
+            traj_box.top_left = top_left;
+            traj_box.bottom_right = bottom_right;
+            traj_box.class_name = visiable_tra.ais_or_not ? "AIS" : "Visual";  // 根据AIS标志设置类别
+            traj_box.mmsi = visiable_tra.mmsi;
+            traj_box.sog = visiable_tra.sog;
+            traj_box.cog = visiable_tra.cog;
+            traj_box.lat = visiable_tra.latitude;
+            traj_box.lon = visiable_tra.longitude;
+
+            trajectory_boxes_.push_back(traj_box);
+
+            // 9. 如果启用绘制，在拼接图上画框（可选）
+            if (drawboxornot_) {
+                // 根据是否包含AIS信息选择颜色
+                cv::Scalar color = visiable_tra.ais_or_not ? cv::Scalar(0, 255, 0) : cv::Scalar(255, 0, 0);  // AIS绿色，纯视觉蓝色
+                cv::rectangle(pano, top_left, bottom_right, color, 2);
+                
+                // 绘制MMSI信息（如果有效）
+                if (visiable_tra.mmsi > 0) {
+                    std::string label = "MMSI:" + std::to_string(visiable_tra.mmsi);
+                    cv::putText(pano, label, cv::Point(top_left.x, top_left.y - 5),
+                               cv::FONT_HERSHEY_SIMPLEX, 0.5, color, 2);
+                }
+            }
+        }
+    }
+
+    cout << "CalibTrajInPano 完成，共处理 " << trajectory_boxes_.size() << " 个轨迹框" << endl;
+}
 // 其他辅助函数的实现...
 
 // 保存相机参数到YAML文件
@@ -709,6 +811,7 @@ void JHStitcher::saveCameraParamters(const std::string& filename, const std::vec
         fs << "K_matrix" << cam.K();  // 这里调用K()获取计算后的矩阵
         fs << "}";
     }
+    
     fs << "]";
     fs.release();
     std::cout << "相机参数已保存到: " << filename << std::endl;
