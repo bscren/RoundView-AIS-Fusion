@@ -772,11 +772,66 @@ void JHStitcher::CalibTrajInPano(
                 cv::Scalar color = visiable_tra.ais_or_not ? cv::Scalar(0, 255, 0) : cv::Scalar(255, 0, 0);  // AIS绿色，纯视觉蓝色
                 cv::rectangle(pano, top_left, bottom_right, color, 2);
                 
+                // 文本绘制配置
+                double font_scale = 0.5;
+                int font_thickness = 2;
+                int font_face = cv::FONT_HERSHEY_SIMPLEX;
+                int baseline = 0;
+                
+                // 计算文本高度（用于行间距）
+                cv::Size text_size = cv::getTextSize("Test", font_face, font_scale, font_thickness, &baseline);
+                int line_height = text_size.height + baseline + 3;  // 文本高度 + 基线 + 间距
+                
+                // 从检测框左下角开始，依次往下绘制信息
+                int text_x = top_left.x;
+                int text_y = bottom_right.y + line_height;  // 从左下角开始，往下偏移一行
+                
                 // 绘制MMSI信息（如果有效）
                 if (visiable_tra.mmsi > 0) {
                     std::string label = "MMSI:" + std::to_string(visiable_tra.mmsi);
-                    cv::putText(pano, label, cv::Point(top_left.x, top_left.y - 5),
-                               cv::FONT_HERSHEY_SIMPLEX, 0.5, color, 2);
+                    cv::putText(pano, label, cv::Point(text_x, text_y),
+                               font_face, font_scale, color, font_thickness);
+                    text_y += line_height;  // 下一行
+                }
+                
+                // 绘制SOG信息（如果有效）
+                if (visiable_tra.sog > 0) {
+                    // 保留2位小数
+                    char buffer[32];
+                    snprintf(buffer, sizeof(buffer), "SOG:%.2f", visiable_tra.sog);
+                    cv::putText(pano, buffer, cv::Point(text_x, text_y),
+                               font_face, font_scale, color, font_thickness);
+                    text_y += line_height;  // 下一行
+                }
+                
+                // 绘制COG信息（如果有效）
+                if (visiable_tra.cog > 0) {
+                    // 保留2位小数
+                    char buffer[32];
+                    snprintf(buffer, sizeof(buffer), "COG:%.2f", visiable_tra.cog);
+                    cv::putText(pano, buffer, cv::Point(text_x, text_y),
+                               font_face, font_scale, color, font_thickness);
+                    text_y += line_height;  // 下一行
+                }
+                
+                // 绘制LAT信息（如果有效）
+                if (visiable_tra.latitude != 0) {  // 纬度可以为负，所以用 != 0
+                    // 保留6位小数（GPS精度）
+                    char buffer[32];
+                    snprintf(buffer, sizeof(buffer), "LAT:%.6f", visiable_tra.latitude);
+                    cv::putText(pano, buffer, cv::Point(text_x, text_y),
+                               font_face, font_scale, color, font_thickness);
+                    text_y += line_height;  // 下一行
+                }
+                
+                // 绘制LON信息（如果有效）
+                if (visiable_tra.longitude != 0) {  // 经度可以为负，所以用 != 0
+                    // 保留6位小数（GPS精度）
+                    char buffer[32];
+                    snprintf(buffer, sizeof(buffer), "LON:%.6f", visiable_tra.longitude);
+                    cv::putText(pano, buffer, cv::Point(text_x, text_y),
+                               font_face, font_scale, color, font_thickness);
+                    // text_y += line_height;  // 如果后续还有信息，继续递增
                 }
             }
         }

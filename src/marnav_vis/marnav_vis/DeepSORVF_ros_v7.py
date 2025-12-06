@@ -441,19 +441,52 @@ class AisVisNode(Node):
 
         # 拼接图像并显示
         current_images = self.latest_processed_images.copy()
-        stitched_image = cv2.hconcat([current_images[cam_name] for cam_name in self.camera_topics])
-        current_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-        cv2.putText(
-            stitched_image,
-            f"Time: {current_time}",
-            (50, 500),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            3,
-            (0, 0, 255),
-            2
-        )
-        cv2.imshow(self.name, stitched_image)
-        cv2.waitKey(1)
+        
+        # 验证所有图像是否存在且尺寸一致（避免hconcat错误）
+        images_to_concat = []
+        target_shape = None
+        all_valid = True
+        
+        for cam_name in self.camera_topics:
+            img = current_images.get(cam_name)
+            if img is None:
+                self.get_logger().debug(f"相机 {cam_name} 图像为None，跳过本次拼接")
+                all_valid = False
+                break
+            
+            # 检查图像尺寸和类型
+            if target_shape is None:
+                target_shape = img.shape
+            elif img.shape != target_shape:
+                self.get_logger().warning(
+                    f"相机 {cam_name} 图像尺寸不匹配: {img.shape} != {target_shape}，"
+                    f"将调整为目标尺寸后拼接"
+                )
+                # 调整图像尺寸以匹配目标
+                img = cv2.resize(img, (target_shape[1], target_shape[0]))
+            
+            images_to_concat.append(img)
+        
+        # 只有当所有图像都有效时才进行拼接
+        if all_valid and len(images_to_concat) == len(self.camera_topics):
+            try:
+                stitched_image = cv2.hconcat(images_to_concat)
+                current_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+                cv2.putText(
+                    stitched_image,
+                    f"Time: {current_time}",
+                    (50, 500),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    3,
+                    (0, 0, 255),
+                    2
+                )
+                cv2.imshow(self.name, stitched_image)
+                cv2.waitKey(1)
+            except cv2.error as e:
+                self.get_logger().error(f"图像拼接失败: {e}")
+        else:
+            self.get_logger().debug("等待所有相机图像就绪...")
 
     def publish_trajectory_callback(self):
         """定时发布融合轨迹（1秒一次）"""

@@ -13,7 +13,7 @@ def generate_launch_description():
     
     declare_camera_fps_arg = DeclareLaunchArgument(
         'camera_publish_fps',
-        default_value='15',
+        default_value='25',
         description='Publishing frequency (Hz) for camera images'
     )
     declare_camera_width_arg = DeclareLaunchArgument(

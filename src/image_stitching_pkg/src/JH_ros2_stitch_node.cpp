@@ -204,12 +204,12 @@ private:
     // - std::string class_name;       // 检测到的类别名称
     // - float confidence;             // 置信度
     // - float x1, y1, x2, y2;         // 检测框的左上角与右下角的坐标
-    // 实际定义可能在 detection_result.h 或类似头文件里。
+    
     std::unordered_map<std::string, std::vector<DetectionResult>> latest_detections_;
 
     std::thread stitch_thread; // 拼縫檢測的类成员变量，而非局部变量
 
-
+    // 实际定义在 image_stitching_pkg/include/image_stitching_pkg/JHstitcher.hpp 头文件里。
      // 存储筛选后的检测框（私有成员，仅内部修改）
     std::vector<BoxInfo> filtered_boxes;
     // 存储投影后的检测框和对应的AIS信息

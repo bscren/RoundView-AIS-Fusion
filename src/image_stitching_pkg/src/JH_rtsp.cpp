@@ -184,7 +184,7 @@ int main(int argc, char * argv[])
     
     for (size_t i = 0; i < rtsp_urls.size(); ++i) {
         auto pub = node->create_publisher<sensor_msgs::msg::Image>(
-            "rtsp_image_" + std::to_string(i)
+            "rtsp_image_" + std::to_string(i), 
             image_qos
         );
         publishers.push_back(pub);
@@ -286,7 +286,7 @@ int main(int argc, char * argv[])
                 
                 // 设置相同的时间戳，确保ROS认为这些帧是同步的
                 msg->header.stamp = node->get_clock()->now();
-                publishers[i].publish(msg);
+                publishers[i]->publish(*msg);  // 使用 -> 访问智能指针，并解引用 msg
                 
                 // 更新帧率统计
                 frames_displayed[i]++;
