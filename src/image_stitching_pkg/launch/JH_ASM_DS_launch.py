@@ -21,22 +21,14 @@ def generate_launch_description():
         description='YOLO工作空间路径'
     )
     
-    # 2. 定义具体动作（进程/节点）
+    # 2. 启动相机
     # 2.1 ros2 run image_stitching_pkg JH_rtsp 1 2 3
-    # play_rtsp = ExecuteProcess(
-    #     cmd=['ros2', 'run', 'image_stitching_pkg', 'JH_rtsp', '1', '2', '3'],
-    #     output='screen',
-    # )
-    
-    # 2.2 YOLO检测节点
-    yolo_detect = Node(
-        package='yolo_detect',
-        executable='yolo_inference',
+    play_rtsp = ExecuteProcess(
+        cmd=['ros2', 'run', 'image_stitching_pkg', 'JH_rtsp', '1', '2', '3'],
         output='screen',
-        cwd=LaunchConfiguration('yolo_workspace_path')
     )
     
-    # 2.3 图像拼接节点
+    # 2.2 图像拼接节点
     stitch_node = Node(
         package='image_stitching_pkg',
         executable='JH_ROS_stitch',
@@ -49,9 +41,7 @@ def generate_launch_description():
             'min_inliers': 10, # 最小内点数
             'max_focal_variance': 50000.0, # 最大焦距方差
             'y_tolerance': 200.0, # 拼接图像间的y轴容差
-            'roi_threshold': 0.95, # ROI阈值
-            'detect_confidence': 0.05, # 检测置信度
-            'iou_threshold': 0.1, # IOU阈值
+            'roi_threshold': 0.95, # 掩码去除黑边的ROI阈值
             'scale': 0.5, # 图像缩放比例
             'cropornot': True, # 是否裁剪全景图
             'drawboxornot': True, # 是否绘制检测框
@@ -82,21 +72,12 @@ def generate_launch_description():
         declare_yolo_workspace,
         
         # 启动rtsp播放
-        # play_rtsp,
-        
-        # 等待bag启动后1秒启动YOLO
-        # RegisterEventHandler(
-        #     OnProcessStart(
-        #         target_action=play_rtsp,  # 监听具体的play_bag进程
-        #         on_start=[TimerAction(period=1.0, actions=[yolo_detect])]
-        #     )
-        # ),
-        yolo_detect, #直接启动YOLO检测节点
-        
-        # 等待YOLO启动后1秒启动拼接节点
+        play_rtsp,
+            
+        # 等待play_rtsp启动后1秒启动拼接节点
         RegisterEventHandler(
             OnProcessStart(
-                target_action=yolo_detect,  # 监听具体的yolo_detect节点
+                target_action=play_rtsp,  # 监听具体的play_rtsp节点
                 on_start=[TimerAction(period=1.0, actions=[stitch_node])]
             )
         ),

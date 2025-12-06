@@ -6,12 +6,7 @@
 #include "message_filters/sync_policies/approximate_time.h"
 #include "message_filters/synchronizer.h"
 
-// YOLO检测消息头文件
-#include "detect_interfaces/msg/multi_detections_cameras.hpp"
-#include "detect_interfaces/msg/multi_detection_results.hpp"
-#include "detect_interfaces/msg/detection_result.hpp"
-
-// 自定义消息头文件
+// jh消息头文件
 #include "mycustface/msg/j_hjpg.hpp"
 #include "mycustface/msg/header.hpp"
 
@@ -33,8 +28,6 @@ using namespace sensor_msgs::msg;
 using namespace message_filters;
 
 // 消息类型别名和服务类型别名
-using MultiDetectionsCamerasMsg = detect_interfaces::msg::MultiDetectionsCameras;
-using MultiDetectionResultsMsg = detect_interfaces::msg::MultiDetectionResults;
 using JHjpgMsg = mycustface::msg::JHjpg;
 using GetCameraParamsSrv = detect_interfaces::srv::GetCameraParams;
 using VisiableTraMsg = marnav_interfaces::msg::VisiableTra;
@@ -63,8 +56,6 @@ public:
             this->declare_parameter("max_focal_variance", 50000.0),
             this->declare_parameter("y_tolerance", 200.0),
             this->declare_parameter("roi_threshold", 0.95f),
-            this->declare_parameter("detect_confidence", 0.3f),
-            this->declare_parameter("iou_threshold", 0.5f),
             this->declare_parameter("scale", 0.75),
             this->declare_parameter("cropornot",true),
             this->declare_parameter("drawboxornot",true),
@@ -93,15 +84,6 @@ public:
         img1_sub_ = std::make_shared<Subscriber>(this, "/camera_image_topic_0", image_qos.get_rmw_qos_profile());
         img2_sub_ = std::make_shared<Subscriber>(this, "/camera_image_topic_1", image_qos.get_rmw_qos_profile());
         img3_sub_ = std::make_shared<Subscriber>(this, "/camera_image_topic_2", image_qos.get_rmw_qos_profile());
-
-        // 初始化YOLO检测结果订阅器
-        rclcpp::SubscriptionOptions options;
-        options.callback_group = callback_group_;
-        yolo_sub_ = this->create_subscription<MultiDetectionsCamerasMsg>(
-            "/yolo/detection_results",
-            50,
-            std::bind(&JHRos2StitchNode::yolo_detection_callback, this, std::placeholders::_1),
-            options);
 
         // 创建图像接收同步器
         sync_ = std::make_shared<message_filters::Synchronizer<SyncPolicy>>(
@@ -183,7 +165,6 @@ private:
     rclcpp::CallbackGroup::SharedPtr callback_group_;
     std::shared_ptr<Subscriber> img1_sub_, img2_sub_, img3_sub_;
     std::shared_ptr<message_filters::Synchronizer<SyncPolicy>> sync_;
-    rclcpp::Subscription<MultiDetectionsCamerasMsg>::SharedPtr yolo_sub_;
     rclcpp::Subscription<VisiableTraBatchMsg>::SharedPtr visiable_tra_sub_;
     rclcpp::Publisher<JHjpgMsg>::SharedPtr stitched_pub_;
     rclcpp::Service<GetCameraParamsSrv>::SharedPtr get_camera_params_srv_;
@@ -197,24 +178,11 @@ private:
     std::atomic<bool> has_received_images_;
     std::atomic<bool> still_detecting;
 
-    // 检测结果存储（按相机名称分类）的：锁类和对应保护对象
-    std::mutex detections_mutex_;  // 保护检测结果的线程安全
-    // DetectionResult 是一个结构体（或者类），用于存储单个目标检测的结果。
-    // 一般该结构体包含如下字段：
-    // - std::string class_name;       // 检测到的类别名称
-    // - float confidence;             // 置信度
-    // - float x1, y1, x2, y2;         // 检测框的左上角与右下角的坐标
-    
-    std::unordered_map<std::string, std::vector<DetectionResult>> latest_detections_;
-
     std::thread stitch_thread; // 拼縫檢測的类成员变量，而非局部变量
 
     // 实际定义在 image_stitching_pkg/include/image_stitching_pkg/JHstitcher.hpp 头文件里。
-     // 存储筛选后的检测框（私有成员，仅内部修改）
-    std::vector<BoxInfo> filtered_boxes;
     // 存储投影后的检测框和对应的AIS信息
     std::vector<TrajectoryBoxInfo> trajectory_boxes;
-    
 
     // 存储船只跟踪消息的缓存队列,分为 cam_name_to_idx 个队列，每个队列对应一个相机的船只跟踪消息
     std::vector<std::queue<VisiableTra>> latest_visiable_tra_cache_;
@@ -284,22 +252,18 @@ private:
     void processSubsequentGroup(std::vector<cv::Mat> images) {
         // cout<<"又进了process Subsequent Group"<<endl;
         // 调用拼接器处理时，传入检测数据（加锁保护）
-        std::lock_guard<std::mutex> lock1(detections_mutex_); // 确保读取latest_detections_时线程安全
-        std::lock_guard<std::mutex> lock2(latest_visiable_tra_cache_mutex_); // 确保读取visiable_tra_cache_时线程安全
-        cv::Mat stitched_image = stitcher_->processSubsequentGroupImpl(images,latest_detections_,latest_visiable_tra_cache_);
+        std::lock_guard<std::mutex> lock(latest_visiable_tra_cache_mutex_); // 确保读取visiable_tra_cache_时线程安全
+        cv::Mat stitched_image = stitcher_->processSubsequentGroupImpl(images,latest_visiable_tra_cache_);
         if (stitched_image.empty()) {
             RCLCPP_ERROR(this->get_logger(), "后续处理失败，无法生成拼接图像");
             return;
         }
-
-        // 获取筛选后的检测框（通过拼接器的getter接口）
-        const std::vector<BoxInfo>& filtered_boxes = stitcher_->getFilteredBoxes();
         
         // 获取投影后的轨迹框（通过拼接器的getter接口）
         const std::vector<TrajectoryBoxInfo>& trajectory_boxes = stitcher_->getTrajectoryBoxes();
 
         // 发布拼接图像（同时传入检测框和轨迹框）
-        publishStitchedImage(stitched_image, filtered_boxes, trajectory_boxes);
+        publishStitchedImage(stitched_image, trajectory_boxes);
     }
 
     // 定时更新拼缝线
@@ -330,38 +294,6 @@ private:
                       
         } else {
             RCLCPP_WARN(this->get_logger(), "由于首次处理组尚未完成，跳过这一次拼缝线更新: %s", thread_info().c_str());
-        }
-    }
-
-    // YOLO检测结果回调
-    void yolo_detection_callback(const MultiDetectionsCamerasMsg::SharedPtr msg) {
-        if (!msg) {
-            RCLCPP_ERROR(this->get_logger(), "收到空的YOLO检测结果消息");
-            return;
-        }
-        else {
-            // RCLCPP_INFO(this->get_logger(), "yolo_detection_callback收到YOLO检测结果消息，包含 %zu 个相机的检测结果", msg->multicamdetections.size());
-        }
-        std::lock_guard<std::mutex> lock(detections_mutex_);
-        latest_detections_.clear();
-
-        // 转换检测结果格式
-        for (const auto& cam_detections : msg->multicamdetections) {
-            std::vector<DetectionResult> results;
-            // results是DetectionResult类型的vector，
-            // 而cam_detections.results是detect_interfaces::msg::DetectionResult类型的vector
-            // 因此需要进行转换
-            for (const auto& det : cam_detections.results) {
-                DetectionResult dr;
-                dr.class_name = det.class_name;
-                dr.confidence = det.confidence;
-                dr.x1 = det.x1;
-                dr.y1 = det.y1;
-                dr.x2 = det.x2;
-                dr.y2 = det.y2;
-                results.push_back(dr);
-            }
-            latest_detections_[cam_detections.camera_name] = results;
         }
     }
 
@@ -420,7 +352,6 @@ private:
     }
     // 发布拼接图像
     void publishStitchedImage(const cv::Mat& stitched_image, 
-                             const std::vector<BoxInfo>& filtered_boxes,
                              const std::vector<TrajectoryBoxInfo>& trajectory_boxes) {
         if (stitched_image.empty()) {
             RCLCPP_ERROR(this->get_logger(), "拼接图像为空，无法发布");
@@ -464,7 +395,7 @@ stitched_8u = stitched_8u(cv::Rect(0,0,stitched_image.cols,stitched_image.rows*6
 
         // 4. 填充message字段（描述信息）
         // jh_msg.message = "stitched image from 3 cameras";
-        JHmessagetoJson(jh_msg.message, filtered_boxes, trajectory_boxes);
+        JHmessagetoJson(jh_msg.message, trajectory_boxes);
 
         std::vector<int> params;
         params.push_back(cv::IMWRITE_JPEG_QUALITY);
@@ -487,35 +418,12 @@ stitched_8u = stitched_8u(cv::Rect(0,0,stitched_image.cols,stitched_image.rows*6
                 jh_msg.size, jh_msg.index);
     }
 
-    void JHmessagetoJson(std::string& message, 
-                        const std::vector<BoxInfo>& boxes,
-                        const std::vector<TrajectoryBoxInfo>& trajectory_boxes)
+    // 将轨迹框信息转换为JSON格式
+    void JHmessagetoJson(std::string& message, const std::vector<TrajectoryBoxInfo>& trajectory_boxes)
     {
         // 构建包含检测框和轨迹框的 JSON 对象
-        message = "{";
-        
-        // 1. 添加检测框数组
-        message += "\"detections\":[";
-        if (!boxes.empty()) {
-            for (size_t i = 0; i < boxes.size(); i++) {
-                const auto& box = boxes[i];
-                message += "{";
-                message += "\"class_name\":\"" + box.class_name + "\",";
-                message += "\"confidence\":" + std::to_string(box.confidence) + ",";
-                message += "\"x1\":" + std::to_string(box.top_left.x) + ",";
-                message += "\"y1\":" + std::to_string(box.top_left.y) + ",";
-                message += "\"x2\":" + std::to_string(box.bottom_right.x) + ",";
-                message += "\"y2\":" + std::to_string(box.bottom_right.y) + ",";
-                message += "\"random_id\":" + std::to_string(rand()%1000000);
-                message += "}";
-                if (i != boxes.size() - 1) {
-                    message += ",";
-                }
-            }
-        }
-        message += "],";
-        
-        // 2. 添加轨迹框数组（包含AIS信息）
+        message = "{";        
+        // 1. 添加轨迹框数组（包含AIS信息）
         message += "\"trajectories\":[";
         if (!trajectory_boxes.empty()) {
             for (size_t i = 0; i < trajectory_boxes.size(); i++) {
@@ -530,8 +438,7 @@ stitched_8u = stitched_8u(cv::Rect(0,0,stitched_image.cols,stitched_image.rows*6
                 message += "\"sog\":" + std::to_string(traj.sog) + ",";
                 message += "\"cog\":" + std::to_string(traj.cog) + ",";
                 message += "\"lat\":" + std::to_string(traj.lat) + ",";
-                message += "\"lon\":" + std::to_string(traj.lon) + ",";
-                message += "\"random_id\":" + std::to_string(rand()%1000000);
+                message += "\"lon\":" + std::to_string(traj.lon);
                 message += "}";
                 if (i != trajectory_boxes.size() - 1) {
                     message += ",";

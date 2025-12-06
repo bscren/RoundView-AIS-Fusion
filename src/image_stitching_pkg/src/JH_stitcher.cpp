@@ -22,8 +22,6 @@ JHStitcher::JHStitcher(
     double max_focal_variance,
     double y_tolerance,
     float roi_threshold,
-    float detect_confidence,
-    float iou_threshold,
     double scale,
     bool cropornot,
     bool drawboxornot,
@@ -41,8 +39,6 @@ JHStitcher::JHStitcher(
     max_focal_variance_(max_focal_variance),
     y_tolerance_(y_tolerance),
     roi_threshold_(roi_threshold),
-    detect_confidence_(detect_confidence),
-    iou_threshold_(iou_threshold),
     scale_(scale),
     cropornot_(cropornot),
     drawboxornot_(drawboxornot),
@@ -371,7 +367,6 @@ bool JHStitcher::processFirstGroupImpl(const std::vector<cv::Mat>& images) {
 
 cv::Mat JHStitcher::processSubsequentGroupImpl
     (const std::vector<cv::Mat>& images,
-     const std::unordered_map<std::string, std::vector<DetectionResult>>& latest_detections_,  
      const std::vector<std::queue<VisiableTra>>& latest_visiable_tra_cache_)
     {
     // 新建data用于规避拼接线检测时的读写冲突
@@ -433,9 +428,6 @@ cv::Mat JHStitcher::processSubsequentGroupImpl
         return Mat();
     }
     
-    // cout<<"开始过滤检测框"<<endl;
-    filtBoxes(resized_pano_result,data,latest_detections_);
-    
     // 开始处理轨迹框，主要是依据相机拼接的内参和变换参数，将各个相机的检测框投影到拼接图上
     CalibTrajInPano(resized_pano_result, data,latest_visiable_tra_cache_);        
 
@@ -494,195 +486,6 @@ void JHStitcher::detectStitchLine()
     for (size_t i = 0; i < num_images; ++i) {
         masks_warp_umat_8U[i].copyTo(transformation_data_.masks[i]);
     }
-}
-
-void JHStitcher::filtBoxes(
-    cv::Mat& pano, 
-    const TransformationData& data,
-    const std::unordered_map<std::string, std::vector<DetectionResult>>& detections) {
-    // 0. 清空之前的检测框（避免累积旧数据）
-    filtered_boxes_.clear();
-    // 0.5. 
-    cout<<"filtBoxes缩放比例: "<< scale_ << endl;
-
-
-    // 1. 收集所有转换后的检测框信息
-    std::vector<BoxInfo> all_boxes;
-    
-    for (const auto& [cam_name, results] : detections) {
-        auto it = cam_name_to_idx_.find(cam_name);
-        if (it == cam_name_to_idx_.end()) {
-            // cout<<"未知相机名称: "<<cam_name.c_str()<<endl;
-            continue;
-        }
-        int cam_idx = it->second;
-        // cout << "cam_idx = " << cam_idx << endl;
-        Mat K;
-        data.cameras[cam_idx].K().convertTo(K, CV_32F);
-        // cout << "收到的相机名称: " << cam_name << "，对应索引: " << cam_idx << endl;
-
-        Rect dst_roi = Rect(data.corners[0], data.sizes[0]);
-        for (size_t i = 1; i < data.corners.size(); ++i)
-            dst_roi |= Rect(data.corners[i], data.sizes[i]);
-
-        // cout << "dst_roi in filtBoxes = " << dst_roi << endl;
-        for (const auto& dr : results) {
-            if (dr.confidence < detect_confidence_) continue; // 过滤低置信度
-
-            // 检测框的两个对角点（左上角：dr.x1,dr.y1；右下角：dr.x2,dr.y2）
-            std::vector<cv::Point2f> four_corners(2); // 存储检测框的2个对角点
-            four_corners[0] = cv::Point2f(dr.x1, dr.y1); // 原始检测框左上角
-            four_corners[1] = cv::Point2f(dr.x2, dr.y2); // 原始检测框右下角
-
-
-            // 计算投影后的的2个角点
-            std::vector<cv::Point2f> four_corners_warp(2); // 与 four_corners 尺寸一致（2个点）
-            // 投影检测框的角点（使用当前相机的内参 K 和旋转矩阵 R）
-            for (int j = 0; j < 2; ++j) { // 循环范围修正为 0~1（对应2个角点）
-                four_corners_warp[j] = data.warper->warpPoint(four_corners[j], K, data.cameras[cam_idx].R);
-            }
-            // cout<< "原始检测框角点: 左上(" << four_corners[0].x << ", " << four_corners[0].y 
-            //     << "), 右下(" << four_corners[1].x << ", " << four_corners[1].y << ")" << endl;
-            // cout<< "投影后检测框角点: 左上(" << four_corners_warp[0].x << ", " << four_corners_warp[0].y 
-            //     << "), 右下(" << four_corners_warp[1].x << ", " << four_corners_warp[1].y << ")" << endl;
-
-            // 【坐标转换逻辑修正】基于投影后的角点，叠加 dxdy 偏移并缩放
-            cv::Point2i top_left(
-                cvRound((four_corners_warp[0].x - dst_roi.x) * scale_ ),//+ data.dxdy[cam_idx].x * scale_), // 投影后左上角 + 偏移 + 缩放
-                cvRound((four_corners_warp[0].y - dst_roi.y) * scale_ )//+ data.dxdy[cam_idx].y * scale_)
-            );
-            cv::Point2i bottom_right(
-                cvRound((four_corners_warp[1].x - dst_roi.x) * scale_ ),//+ data.dxdy[cam_idx].x * scale_), // 投影后右下角 + 偏移 + 缩放
-                cvRound((four_corners_warp[1].y - dst_roi.y) * scale_ )//+ data.dxdy[cam_idx].y * scale_)
-            );
-            // cout<< "data.dxdy偏移: (" << data.dxdy[cam_idx].x << ", " << data.dxdy[cam_idx].y << ")" << endl;
-            // cout<< "转换后检测框坐标: 左上(" << top_left.x << ", " << top_left.y 
-            //     << "), 右下(" << bottom_right.x << ", " << bottom_right.y << ")" << endl;
-
-             // 确保检测框坐标非负（避免超出图像范围）
-            top_left.x = std::max(0, top_left.x);
-            top_left.y = std::max(0, top_left.y);
-            bottom_right.x = std::max(top_left.x + 1, bottom_right.x); // 确保宽度≥1
-            bottom_right.y = std::max(top_left.y + 1, bottom_right.y); // 确保高度≥1
-
-            all_boxes.push_back({top_left, bottom_right, dr.class_name, dr.confidence});
-        }
-    }
-
-    // 2. 按类别分组
-    std::unordered_map<std::string, std::vector<BoxInfo>> class_boxes;
-    for (const auto& box : all_boxes) {
-        class_boxes[box.class_name].push_back(box);
-    }
-
-    // 3. 每组内筛选：保留重叠区域中置信度最高的框
-    for (const auto& [cls, boxes] : class_boxes) {
-        std::vector<bool> is_processed(boxes.size(), false);
-
-        for (size_t i = 0; i < boxes.size(); ++i) {
-            if (is_processed[i]) continue;
-
-            // 找到当前框的所有重叠框
-            std::vector<BoxInfo> overlapping_group;
-            overlapping_group.push_back(boxes[i]);
-
-            for (size_t j = i + 1; j < boxes.size(); ++j) {
-                if (is_processed[j]) continue;
-
-                Rect rect_i(boxes[i].top_left, boxes[i].bottom_right);
-                Rect rect_j(boxes[j].top_left, boxes[j].bottom_right);
-                float iou = calculateIoU(rect_i, rect_j);
-
-                if (iou > iou_threshold_) {
-                    overlapping_group.push_back(boxes[j]);
-                    is_processed[j] = true;
-                }
-            }
-
-            // 保留组内置信度最高的框
-            if (!overlapping_group.empty()) {
-                auto max_conf_it = std::max_element(
-                    overlapping_group.begin(),
-                    overlapping_group.end(),
-                    [](const BoxInfo& a, const BoxInfo& b) {
-                        return a.confidence < b.confidence;
-                    }
-                );
-                filtered_boxes_.push_back(*max_conf_it);
-            }
-        }
-    }
-    // std::cout << "filtered_boxes_ 筛选后的检测框数量: " << filtered_boxes_.size() << std::endl;
-    // for (const auto& box : filtered_boxes_) {
-        // std::cout << "检测框: " << box.class_name 
-        //           << ", 置信度: " << box.confidence
-        //           << ", 坐标: (" << box.top_left.x << ", " << box.top_left.y << ") - ("
-        //           << box.bottom_right.x << ", " << box.bottom_right.y << ")" << std::endl;
-    // }
-    if(drawboxornot_)
-    {
-        // 新增功能：将最终检测框绘制到pano上
-        if (pano.empty()) {
-            std::cerr << "警告：全景图为空，无法绘制检测框！" << std::endl;
-            return;
-        }
-        // 为不同类别设置不同颜色（可根据需要扩展）
-        std::unordered_map<std::string, cv::Scalar> class_colors;
-        cv::RNG rng(12345); // 随机数生成器，确保同类别颜色一致
-
-        for (const auto& box : filtered_boxes_) {
-            // 为未分配颜色的类别生成随机颜色
-            if (class_colors.find(box.class_name) == class_colors.end()) {
-                class_colors[box.class_name] = cv::Scalar(
-                    rng.uniform(0, 256),
-                    rng.uniform(0, 256),
-                    rng.uniform(0, 256)
-                );
-            }
-            cv::Scalar color = class_colors[box.class_name];
-
-            // 绘制矩形框
-            cv::rectangle(
-                pano,
-                box.top_left,
-                box.bottom_right,
-                color,
-                2 // 线宽
-            );
-
-            // 准备显示文本（类别 + 置信度）
-            std::string text = box.class_name + " (" + std::to_string(int(box.confidence * 100)) + "%)";
-            cv::Point text_pos = box.top_left + cv::Point(2, 15); // 文本位置（框左上角偏移）
-
-            // 绘制文本背景（避免文字与图像重叠难以辨认）
-            int base_line;
-            cv::Size text_size = cv::getTextSize(text, cv::FONT_HERSHEY_SIMPLEX, 0.5, 1, &base_line);
-            cv::rectangle(
-                pano,
-                text_pos - cv::Point(1, base_line),
-                text_pos + cv::Point(text_size.width, text_size.height),
-                color,
-                -1 // 填充背景
-            );
-
-            // 绘制文本
-            cv::putText(
-                pano,
-                text,
-                text_pos,
-                cv::FONT_HERSHEY_SIMPLEX,
-                0.5, // 字体大小
-                cv::Scalar(255, 255, 255), // 白色文字
-                1 // 文字线宽
-            );
-        }
-    std::cout << "已在全景图上绘制 " << filtered_boxes_.size() << " 个检测框" << std::endl;
-
-    }
-    
-
-    
-
 }
 
 // 功能和 filtBoxes 类似，输入也类似
@@ -920,20 +723,6 @@ std::vector<cv::detail::CameraParams> JHStitcher::readCameraParamters(const std:
     return cameras;
 }
 
-float JHStitcher::calculateIoU(const cv::Rect& a, const cv::Rect& b) {
-    int x1 = std::max(a.x, b.x);
-    int y1 = std::max(a.y, b.y);
-    int x2 = std::min(a.x + a.width, b.x + b.width);
-    int y2 = std::min(a.y + a.height, b.y + b.height);
-    
-    int intersection_area = std::max(0, x2 - x1) * std::max(0, y2 - y1);
-    int area_a = a.width * a.height;
-    int area_b = b.width * b.height;
-    int union_area = area_a + area_b - intersection_area;
-    
-    if (union_area == 0) return 0.0f;
-    return static_cast<float>(intersection_area) / union_area;
-}
 
 // 获得全景边框
 std::vector<Point> JHStitcher::prepare_pxpy(const vector<Point> &corners, const vector<Size> &sizes)
@@ -1068,7 +857,7 @@ bool JHStitcher::checkAndFilterMatches(std::vector<cv::detail::MatchesInfo>& pai
             // 有效匹配对：检查置信度、内点数是否达标
             if (match_info.confidence < min_confidence_) {
                 // 置信度不足，返回失败
-                std::cerr << "Error: 有效匹配对的最低置信度仅为:" + to_string(match_info.confidence) + "低于阈值"<< to_string(detect_confidence_) <<",换一帧检测" << std::endl;
+                std::cerr << "Error: 有效匹配对的最低置信度仅为:" + to_string(match_info.confidence) + "低于阈值"<< to_string(min_confidence_) <<",换一帧检测" << std::endl;
                 return false;
             }
             

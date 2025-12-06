@@ -45,24 +45,6 @@ struct TransformationData {
     cv::Rect crop_roi;  //裁剪的roi
 };
 
-// 定义yolo检测结果数据结构
-struct DetectionResult {
-    std::string class_name;
-    float confidence;
-    uint32_t x1;
-    uint32_t y1;
-    uint32_t x2;
-    uint32_t y2;
-};
-
-// 定义检测框信息结构体
-struct BoxInfo {
-    cv::Point2i top_left;
-    cv::Point2i bottom_right;
-    std::string class_name;
-    float confidence;
-};
-
 // 定义跟踪框消息类型
 struct VisiableTra {
     std::string camera_name;
@@ -104,8 +86,6 @@ public:
         double max_focal_variance = 50000.0,
         double y_tolerance = 200,
         float roi_threshold = 0.95f,
-        float detect_confidence = 0.3f,
-        float iou_threshold = 0.5f,
         double scale = 0.75,
         bool cropornot = true,
         bool drawboxornot = true,
@@ -120,19 +100,13 @@ public:
     bool processFirstGroupImpl(const std::vector<cv::Mat>& images);
 
     // 后续处理图像组具体，使用现有变换数据
-    cv::Mat processSubsequentGroupImpl(const std::vector<cv::Mat>& images,\
-        const std::unordered_map<std::string, std::vector<DetectionResult>>& latest_detections_, \
-        const std::vector<std::queue<VisiableTra>>& latest_visiable_tra_cache_);
+    cv::Mat processSubsequentGroupImpl(
+        const std::vector<cv::Mat>& images,
+        const std::vector<std::queue<VisiableTra>>& latest_visiable_tra_cache_
+    );
 
     // 检测并更新拼缝线
     void detectStitchLine();
-
-    // 绘制检测框
-    void filtBoxes(
-        cv::Mat& pano, 
-        const TransformationData& data,
-        const std::unordered_map<std::string, std::vector<DetectionResult>>& latest_detections_
-    );
 
     // 投影跟踪框到拼接图上
     void CalibTrajInPano(
@@ -146,9 +120,6 @@ public:
     
     // 获取最新的变形图像
     const std::vector<cv::UMat>& getLatestWarpImages() const { return latest_warp_images_32F; }
-
-    // 获取筛选后的检测框（getter接口）
-    const std::vector<BoxInfo>& getFilteredBoxes() const { return filtered_boxes_;}
 
     // 获取投影后的轨迹框（getter接口）
     const std::vector<TrajectoryBoxInfo>& getTrajectoryBoxes() const { return trajectory_boxes_;}
@@ -173,8 +144,6 @@ private:
     double max_focal_variance_;
     double y_tolerance_;
     float roi_threshold_;
-    float detect_confidence_;
-    float iou_threshold_;
     double scale_;
     bool cropornot_;
     bool drawboxornot_;
@@ -195,9 +164,6 @@ private:
     // 拼接图像变换数据及线程安全控制
     TransformationData transformation_data_;
     std::mutex transformation_mutex_;
-
-    // yolo检测框筛选结果
-    std::vector<BoxInfo> filtered_boxes_;  // 公有化的检测框容器
 
     // 轨迹框筛选结果（包含AIS信息）
     std::vector<TrajectoryBoxInfo> trajectory_boxes_;  // 轨迹框容器
