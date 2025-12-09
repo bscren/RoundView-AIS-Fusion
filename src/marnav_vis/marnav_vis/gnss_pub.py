@@ -55,18 +55,18 @@ class GnssPublisher(Node):
         
 
         # 填充参数 
-        msg.latitude = self.base_params['lat']  # 纬度
-        msg.longitude = self.base_params['lon']  # 经度
-        msg.horizontal_orientation = self.base_params['horizontal_orientation']  # 水平方向角
-        msg.vertical_orientation = self.base_params['vertical_orientation']  # 垂直方向
-        msg.camera_height = self.base_params['camera_height']  # 高度
+        # msg.latitude = self.base_params['lat']  # 纬度
+        # msg.longitude = self.base_params['lon']  # 经度
+        # msg.horizontal_orientation = self.base_params['horizontal_orientation']  # 水平方向角
+        # msg.vertical_orientation = self.base_params['vertical_orientation']  # 垂直方向
+        # msg.camera_height = self.base_params['camera_height']  # 高度
         
         # # 填充参数（添加微小噪声模拟实时变化）
-        # msg.latitude = self.add_noise(self.base_params['lat'], 0.000002)  # 纬度误差±0.000002
-        # msg.longitude = self.add_noise(self.base_params['lon'], 0.000002)  # 经度误差±0.000002
-        # msg.horizontal_orientation = self.add_noise(self.base_params['horizontal_orientation'], 0.0002)  # 水平方向角±0.02度
-        # msg.vertical_orientation = self.add_noise(self.base_params['vertical_orientation'], 0.0002)  # 垂直方向角±0.02度
-        # msg.camera_height = self.add_noise(self.base_params['camera_height'], 0.0002)  # 高度±0.02米
+        msg.latitude = self.add_noise(self.base_params['lat'], 0.000002)  # 纬度误差±0.000002
+        msg.longitude = self.add_noise(self.base_params['lon'], 0.000002)  # 经度误差±0.000002
+        msg.horizontal_orientation = self.add_noise(self.base_params['horizontal_orientation'], 0.0002)  # 水平方向角±0.02度
+        msg.vertical_orientation = self.add_noise(self.base_params['vertical_orientation'], 0.0002)  # 垂直方向角±0.02度
+        msg.camera_height = self.add_noise(self.base_params['camera_height'], 0.0002)  # 高度±0.02米
         
         # 添加时间戳（当前ROS时间）
         msg.timestamp = self.get_clock().now().to_msg()

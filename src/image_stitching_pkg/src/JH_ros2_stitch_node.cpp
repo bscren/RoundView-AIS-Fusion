@@ -16,13 +16,17 @@
 // 船只跟踪消息体文件
 #include "marnav_interfaces/msg/visiable_tra.hpp"
 #include "marnav_interfaces/msg/visiable_tra_batch.hpp"
+#include "marnav_interfaces/msg/gnss.hpp"
+
 
 #include "JHstitcher.hpp"
 #include <mutex>
 #include <shared_mutex>
 #include <thread>
 #include <atomic>
+#include <nlohmann/json.hpp>
 
+using json = nlohmann::json;
 using namespace std;
 using namespace sensor_msgs::msg;
 using namespace message_filters;
@@ -32,6 +36,7 @@ using JHjpgMsg = mycustface::msg::JHjpg;
 using GetCameraParamsSrv = detect_interfaces::srv::GetCameraParams;
 using VisiableTraMsg = marnav_interfaces::msg::VisiableTra;
 using VisiableTraBatchMsg = marnav_interfaces::msg::VisiableTraBatch;
+using GnssMsg = marnav_interfaces::msg::Gnss;
 
 class JHRos2StitchNode : public rclcpp::Node {
 public:
@@ -81,9 +86,11 @@ public:
             .reliability(rclcpp::ReliabilityPolicy::BestEffort)
             .durability(rclcpp::DurabilityPolicy::Volatile);
         
+        //  =================================================== DEBUG ===================================================
         img1_sub_ = std::make_shared<Subscriber>(this, "/camera_image_topic_0", image_qos.get_rmw_qos_profile());
         img2_sub_ = std::make_shared<Subscriber>(this, "/camera_image_topic_1", image_qos.get_rmw_qos_profile());
         img3_sub_ = std::make_shared<Subscriber>(this, "/camera_image_topic_2", image_qos.get_rmw_qos_profile());
+        // =================================================== DEBUG ===================================================
 
         // 创建图像接收同步器
         sync_ = std::make_shared<message_filters::Synchronizer<SyncPolicy>>(
@@ -127,6 +134,15 @@ public:
         for (size_t i = 0; i < cam_name_to_idx_.size(); i++) {
             latest_visiable_tra_cache_[i] = std::queue<VisiableTra>();
         }
+
+        // 创建GNSS的订阅器
+        gnss_sub_ = this->create_subscription<GnssMsg>(
+            "/gnss_topic",
+            rclcpp::QoS(rclcpp::KeepLast(5))
+            .reliability(rclcpp::ReliabilityPolicy::BestEffort),
+            std::bind(&JHRos2StitchNode::gnss_callback, this, std::placeholders::_1),
+            sub_options);
+
         // 创建获取相机参数服务
         get_camera_params_srv_ = this->create_service<GetCameraParamsSrv>(
             "get_camera_params",
@@ -188,6 +204,10 @@ private:
     std::vector<std::queue<VisiableTra>> latest_visiable_tra_cache_;
     std::mutex latest_visiable_tra_cache_mutex_;
     
+    // 存储GNSS消息的缓存队列
+    std::queue<GnssMsg> latest_gnss_cache_;
+    std::mutex latest_gnss_cache_mutex_;
+    rclcpp::Subscription<GnssMsg>::SharedPtr gnss_sub_;
 
      // 新增：监控发布超时的变量
     rclcpp::TimerBase::SharedPtr watchdog_timer_;  // 定时检查的定时器
@@ -252,7 +272,7 @@ private:
     void processSubsequentGroup(std::vector<cv::Mat> images) {
         // cout<<"又进了process Subsequent Group"<<endl;
         // 调用拼接器处理时，传入检测数据（加锁保护）
-        std::lock_guard<std::mutex> lock(latest_visiable_tra_cache_mutex_); // 确保读取visiable_tra_cache_时线程安全
+        std::lock_guard<std::mutex> lock1(latest_visiable_tra_cache_mutex_); // 确保读取visiable_tra_cache_时线程安全
         cv::Mat stitched_image = stitcher_->processSubsequentGroupImpl(images,latest_visiable_tra_cache_);
         if (stitched_image.empty()) {
             RCLCPP_ERROR(this->get_logger(), "后续处理失败，无法生成拼接图像");
@@ -261,9 +281,10 @@ private:
         
         // 获取投影后的轨迹框（通过拼接器的getter接口）
         const std::vector<TrajectoryBoxInfo>& trajectory_boxes = stitcher_->getTrajectoryBoxes();
-
-        // 发布拼接图像（同时传入检测框和轨迹框）
-        publishStitchedImage(stitched_image, trajectory_boxes);
+        // 获取最新的GNSS消息
+        std::lock_guard<std::mutex> lock2(latest_gnss_cache_mutex_);
+        // 发布拼接图像（同时传入检测框和轨迹框和GNSS消息）
+        publishStitchedImage(stitched_image, trajectory_boxes, latest_gnss_cache_.front());
     }
 
     // 定时更新拼缝线
@@ -350,9 +371,19 @@ private:
             }
         }
     }
+
+    // GNSS回调
+    void gnss_callback(const GnssMsg::SharedPtr msg) {
+        std::lock_guard<std::mutex> lock(latest_gnss_cache_mutex_);
+        latest_gnss_cache_.push(*msg);
+        while (latest_gnss_cache_.size() > 5) {
+            latest_gnss_cache_.pop();
+        }
+    }
     // 发布拼接图像
     void publishStitchedImage(const cv::Mat& stitched_image, 
-                             const std::vector<TrajectoryBoxInfo>& trajectory_boxes) {
+                             const std::vector<TrajectoryBoxInfo>& trajectory_boxes,
+                             const GnssMsg& gnss_msg) {
         if (stitched_image.empty()) {
             RCLCPP_ERROR(this->get_logger(), "拼接图像为空，无法发布");
             return;
@@ -373,9 +404,10 @@ private:
         } else {
             stitched_image.convertTo(stitched_8u, CV_8UC3);
         }
-        
-// 只为了好看：
-stitched_8u = stitched_8u(cv::Rect(0,0,stitched_image.cols,stitched_image.rows*6/7));
+        // =================================================== DEBUG ===================================================
+        // 只为了好看：
+        stitched_8u = stitched_8u(cv::Rect(0,0,stitched_image.cols,stitched_image.rows*6/7));
+        // =================================================== DEBUG ===================================================
 
         // 1. 构建自定义消息对象
         JHjpgMsg jh_msg;
@@ -395,7 +427,7 @@ stitched_8u = stitched_8u(cv::Rect(0,0,stitched_image.cols,stitched_image.rows*6
 
         // 4. 填充message字段（描述信息）
         // jh_msg.message = "stitched image from 3 cameras";
-        JHmessagetoJson(jh_msg.message, trajectory_boxes);
+        JHmessagetoJson(jh_msg.message, trajectory_boxes, gnss_msg);
 
         std::vector<int> params;
         params.push_back(cv::IMWRITE_JPEG_QUALITY);
@@ -418,39 +450,75 @@ stitched_8u = stitched_8u(cv::Rect(0,0,stitched_image.cols,stitched_image.rows*6
                 jh_msg.size, jh_msg.index);
     }
 
-    // 将轨迹框信息转换为JSON格式
-    void JHmessagetoJson(std::string& message, const std::vector<TrajectoryBoxInfo>& trajectory_boxes)
+    // 将轨迹框信息 和 此刻的GNSS消息 转换为JSON格式
+    void JHmessagetoJson(std::string& message, const std::vector<TrajectoryBoxInfo>& trajectory_boxes, const GnssMsg& gnss_msg)
     {
-        // 构建包含检测框和轨迹框的 JSON 对象
-        message = "{";        
-        // 1. 添加轨迹框数组（包含AIS信息）
-        message += "\"trajectories\":[";
-        if (!trajectory_boxes.empty()) {
-            for (size_t i = 0; i < trajectory_boxes.size(); i++) {
-                const auto& traj = trajectory_boxes[i];
-                message += "{";
-                message += "\"class_name\":\"" + traj.class_name + "\",";
-                message += "\"x1\":" + std::to_string(traj.top_left.x) + ",";
-                message += "\"y1\":" + std::to_string(traj.top_left.y) + ",";
-                message += "\"x2\":" + std::to_string(traj.bottom_right.x) + ",";
-                message += "\"y2\":" + std::to_string(traj.bottom_right.y) + ",";
-                message += "\"mmsi\":" + std::to_string(traj.mmsi) + ",";
-                message += "\"sog\":" + std::to_string(traj.sog) + ",";
-                message += "\"cog\":" + std::to_string(traj.cog) + ",";
-                message += "\"lat\":" + std::to_string(traj.lat) + ",";
-                message += "\"lon\":" + std::to_string(traj.lon);
-                message += "}";
-                if (i != trajectory_boxes.size() - 1) {
-                    message += ",";
-                }
-            }
+        // 1. 构建根JSON对象
+        json root;
+
+        // 2. 添加GNSS信息
+        root["gnss"] = {
+            {"latitude", gnss_msg.latitude},
+            {"longitude", gnss_msg.longitude},
+            {"horizontal_orientation", gnss_msg.horizontal_orientation},
+            {"vertical_orientation", gnss_msg.vertical_orientation},
+            {"camera_height", gnss_msg.camera_height}
+        };
+
+        // 3. 添加轨迹框数组
+        root["trajectories"] = json::array();
+        for (const auto& traj : trajectory_boxes) {
+            root["trajectories"].push_back({
+                {"class_name", traj.class_name},
+                {"x1", traj.top_left.x},
+                {"y1", traj.top_left.y},
+                {"x2", traj.bottom_right.x},
+                {"y2", traj.bottom_right.y},
+                {"mmsi", traj.mmsi},
+                {"sog", traj.sog},
+                {"cog", traj.cog},
+                {"lat", traj.lat},
+                {"lon", traj.lon}
+            });
         }
-        message += "]";
+
+        // 4. 将JSON对象转换为字符串
+        message = root.dump();
+
+        // // 构建包含检测框和轨迹框的 JSON 对象
+        // message = "{\"gnss\":{";  
+        // message += "\"latitude\":" + std::to_string(gnss_msg.latitude) + ",";
+        // message += "\"longitude\":" + std::to_string(gnss_msg.longitude) + ",";
+        // message += "\"horizontal_orientation\":" + std::to_string(gnss_msg.horizontal_orientation) + ",";
+        // message += "\"vertical_orientation\":" + std::to_string(gnss_msg.vertical_orientation) + ",";
+        // message += "\"camera_height\":" + std::to_string(gnss_msg.camera_height) + "},";
+        // message += "},";
+
+        // // 2. 添加轨迹框数组（包含AIS信息）
+        // message += "\"trajectories\":[";
+        // if (!trajectory_boxes.empty()) {
+        //     for (size_t i = 0; i < trajectory_boxes.size(); i++) {
+        //         const auto& traj = trajectory_boxes[i];
+        //         message += "{";
+        //         message += "\"class_name\":\"" + traj.class_name + "\",";
+        //         message += "\"x1\":" + std::to_string(traj.top_left.x) + ",";
+        //         message += "\"y1\":" + std::to_string(traj.top_left.y) + ",";
+        //         message += "\"x2\":" + std::to_string(traj.bottom_right.x) + ",";
+        //         message += "\"y2\":" + std::to_string(traj.bottom_right.y) + ",";
+        //         message += "\"mmsi\":" + std::to_string(traj.mmsi) + ",";
+        //         message += "\"sog\":" + std::to_string(traj.sog) + ",";
+        //         message += "\"cog\":" + std::to_string(traj.cog) + ",";
+        //         message += "\"lat\":" + std::to_string(traj.lat) + ",";
+        //         message += "\"lon\":" + std::to_string(traj.lon);
+        //         message += "}";
+        //         if (i != trajectory_boxes.size() - 1) {
+        //             message += ",";
+        //         }
+        //     }
+        // }
+        // message += "]";
         
-        message += "}"; // 结束 JSON 对象
-        
-        // cout<<"完成了一次JHmessagetoJson，检测框: " << boxes.size() 
-        //     << ", 轨迹框: " << trajectory_boxes.size() << endl;
+        // message += "}"; // 结束 JSON 对象
     }
 
 

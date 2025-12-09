@@ -189,9 +189,12 @@ class AisVisNode(Node):
         self.declare_parameters(
             namespace='',
             parameters=[
+        # =================================================== DEBUG ===================================================
                 ('width_height', [2560, 1440]),
                 ('camera_topics', ['/camera_image_topic_0', '/camera_image_topic_1', '/camera_image_topic_2']),
                 # ('camera_topics', ['/rtsp_image_0', '/rtsp_image_1', '/rtsp_image_2']),
+        # =================================================== DEBUG ===================================================
+
                 ('aisbatch_topic', '/ais_batch_topic'),
                 ('fus_trajectory_topic', '/fus_trajectory_topic'),
                 ('gnss_topic', '/gnss_topic'),
@@ -208,6 +211,8 @@ class AisVisNode(Node):
         self.im_shape = tuple(map(int, self.get_parameter('width_height').get_parameter_value().integer_array_value))
         self.camera_topics = self.get_parameter('camera_topics').get_parameter_value().string_array_value
         
+
+        # =================================================== DEBUG ===================================================
         # 相机topic到标准名称的映射（与C++拼接节点保持一致）
         self.camera_name_mapping = {
             '/camera_image_topic_0': 'rtsp_image_0',
@@ -217,7 +222,9 @@ class AisVisNode(Node):
             '/rtsp_image_1': 'rtsp_image_1',
             '/rtsp_image_2': 'rtsp_image_2'
         }
-        
+        # =================================================== DEBUG ===================================================
+
+
         self.aisbatch_topic = self.get_parameter('aisbatch_topic').get_parameter_value().string_value
         self.fus_trajectory_topic = self.get_parameter('fus_trajectory_topic').get_parameter_value().string_value
         self.gnss_topic = self.get_parameter('gnss_topic').get_parameter_value().string_value
@@ -382,20 +389,29 @@ class AisVisNode(Node):
         # 更新相机位置信息，以相机camera_image_topic_1为正前方
         # 因此这里假设camera_image_topic_1是中间相机，camera_image_topic_0和camera_image_topic_2的水平朝向分别调整-60和+60度
         for idx, cam_topic in enumerate(self.camera_topics):
+            # 先获取各自的K矩阵
+            K = self.camera_para[idx]['K']
             horizontal_orientation = (msg.horizontal_orientation + (idx - 1) * 60) % 360  # 中间相机不变，左右相机调整±60度，若超出360度范围，进行归一化
             # self.camera_pos_para[idx] = {
-            #     "longitude","latitude","horizontal_orientation""vertical_orientation"
-            #     "camera_height"
-            #     'fov_hor'
-            #     'fov_ver'
-            #     'focal'
-            #     'aspect'
-            #     'ppx'
-            #     'ppy'
-            #     'R'
-            #     't'
-            #     'K'
-            #     # "intrinsics": self.camera_para.get(cam_topic, {})
+            #     'longitude': msg.longitude,
+            #     'latitude': msg.latitude,
+            #     'horizontal_orientation': horizontal_orientation, # 注意，每个相机的水平朝向都不同，因此不能直接用msg.horizontal_orientation
+            #     'vertical_orientation': msg.vertical_orientation,
+            #     'camera_height': msg.camera_height,
+            
+            #     'fov_hor': self.camera_para[idx]['fov_hor'],
+            #     'fov_ver': self.camera_para[idx]['fov_ver'],
+            #     'fx': K[0,0],
+            #     'fy': K[1,1],
+            #     'u0': K[0,2],
+            #     'v0': K[1,2],
+            #     # 'focal': self.camera_para[idx]['focal'], # 以下这些没有用处
+            #     # 'aspect': self.camera_para[idx]['aspect'],
+            #     # 'ppx': self.camera_para[idx]['ppx'],
+            #     # 'ppy': self.camera_para[idx]['ppy'],
+            #     # 'R': self.camera_para[idx]['R'],
+            #     # 't': self.camera_para[idx]['t'],
+            #     # 'K': self.camera_para[idx]['K']
             # }
     # ================================== DEBUG ==================================
             # Lon	Lat	Horizontal Orientation	Vertical Orientation	Camera Height	Horizontal FoV	Vertical FoV	fx	fy	u0	v0

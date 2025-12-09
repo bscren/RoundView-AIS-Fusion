@@ -1,0 +1,152 @@
+# 多相机-AIS-RTK数据集录制工具配置文件
+# 配置说明：请根据实际设备参数修改以下配置
+
+
+# ============ 设备配置 ============
+devices:
+  # AIS设备配置
+  ais:
+    enabled: true
+    comm_type: "udp"            # 通信方式: serial(串口) / tcp(TCP客户端) / udp(UDP服务器)
+    max_queue_size: 100            # AIS数据队列最大长度
+    
+    # 串口通信配置（当 comm_type="serial" 时使用）
+    port: "/dev/ttyS3"             # 串口端口号（Linux: /dev/ttyUSBx, Windows: COMx）
+    baud_rate: 38400               # 波特率
+    parity: "N"                    # 校验位: N(无)/E(偶)/O(奇)
+    stopbits: 1                    # 停止位
+    bytesize: 8                    # 数据位
+    timeout: 1.0                   # 超时时间(秒)
+    
+    # TCP通信配置（当 comm_type="tcp" 时使用）
+    tcp_ip: "127.0.0.1"            # TCP服务器IP地址
+    tcp_port: 5000                 # TCP服务器端口
+    
+    # UDP通信配置（当 comm_type="udp" 时使用）
+    bind_address: "0.0.0.0"        # UDP绑定地址（0.0.0.0表示监听所有网卡）
+    udp_port: 1800                 # UDP监听端口
+    
+  # 多相机配置（RTSP）
+  cameras:
+    - id: "camera_01"
+      rtsp_url: "rtsp://admin:juhai001@192.168.1.1:554/Streaming/Channels/2"
+      fps: 20
+      intrinsic:                   # 相机内参（标定参数）
+        fx: 800.0                  # 焦距x
+        fy: 800.0                  # 焦距y
+        cx: 640.0                  # 主点x
+        cy: 360.0                  # 主点y
+        k1: 0.0                    # 畸变系数k1
+        k2: 0.0                    # 畸变系数k2
+        p1: 0.0                    # 畸变系数p1
+        p2: 0.0                    # 畸变系数p2
+      enabled: true
+      
+    - id: "camera_02"
+      rtsp_url: "rtsp://admin:juhai002@192.168.1.2:554/Streaming/Channels/2"
+      fps: 20
+      intrinsic:
+        fx: 800.0
+        fy: 800.0
+        cx: 640.0
+        cy: 360.0
+        k1: 0.0
+        k2: 0.0
+        p1: 0.0
+        p2: 0.0
+      enabled: true
+      
+    - id: "camera_03"
+      rtsp_url: "rtsp://admin:juhai003@192.168.1.3:554/Streaming/Channels/2"
+      fps: 20
+      intrinsic:
+        fx: 800.0
+        fy: 800.0
+        cx: 640.0
+        cy: 360.0
+        k1: 0.0
+        k2: 0.0
+        p1: 0.0
+        p2: 0.0
+      enabled: true
+    
+  # RTK设备配置（UDP）
+  rtk:
+    enabled: true
+    udp_port: 8010                 # UDP监听端口
+    bind_address: "0.0.0.0"        # 绑定地址（0.0.0.0表示监听所有网卡）
+    expected_frequency: 5          # 期望接收频率（Hz）
+    quality_threshold: 1           # 定位质量阈值（>=1为有效）
+
+# ============ 存储配置 ============
+storage:
+  root_path: "/home/tl/RV/dataset"  # 数据集根路径
+  image_format: "jpg"                # 图像格式（jpg/png）
+  image_quality: 95                  # JPG压缩质量（1-100）
+  sample_rate: 1                     # 帧采样率（1表示全采集，5表示每5帧采1帧）
+  metadata_format: "json"            # 元数据格式
+  
+  # 缓存配置
+  cache:
+    max_queue_size: 100              # 各数据队列最大长度
+    batch_write_size: 50             # 批量写入阈值（条数）
+    batch_write_interval: 5.0        # 批量写入时间间隔（秒）
+    expire_time: 300                 # 数据过期时间（秒）
+
+# ============ 异常处理配置 ============
+fault_tolerance:
+  # 设备重连配置
+  reconnect:
+    enabled: true
+    retry_interval: 5                # 重连间隔（秒）
+    max_retries: 3                   # 最大重试次数（0表示无限重试）
+    
+  # RTK质量无效处理
+  rtk_invalid:
+    use_estimated_time: true         # 使用估算时间
+    max_invalid_duration: 30         # 最大无效持续时间（秒）
+    alert_threshold: 30              # 告警阈值（秒）
+    
+  # 相机断流处理
+  camera_disconnect:
+    skip_alignment: true             # 跳过断流相机的对齐
+    auto_reconnect: true             # 自动重连
+    
+  # AIS无数据处理
+  ais_no_data:
+    mark_missing: true               # 标记缺失
+    auto_check: true                 # 自动检查连接
+
+# ============ 日志和监控配置 ============
+logging:
+  # 日志级别：DEBUG/INFO/WARNING/ERROR/CRITICAL
+  console_level: "INFO"              # 控制台日志级别
+  file_level: "DEBUG"                # 文件日志级别
+  log_dir: "/home/tl/RV/logs"        # 日志文件目录
+  rotation: "1 day"                  # 日志轮转周期
+  retention: "7 days"                # 日志保留时间
+  
+  # 监控配置
+  monitoring:
+    enabled: true
+    update_interval: 1.0             # 状态更新间隔（秒）
+    show_statistics: true            # 显示统计信息
+    
+  # 告警配置
+  alerts:
+    enabled: true
+    methods: ["console"]             # 告警方式：console/email
+    email:
+      smtp_server: "smtp.example.com"
+      smtp_port: 587
+      username: "alert@example.com"
+      password: "password"
+      recipients: ["admin@example.com"]
+
+# ============ 系统配置 ============
+system:
+  thread_pool_size: 10               # 线程池大小
+  buffer_size: 4096                  # 缓冲区大小
+  platform: "linux"                  # 平台：linux/windows
+  encoding: "utf-8"                  # 字符编码
+

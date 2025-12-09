@@ -23,6 +23,9 @@ find_package(cv_bridge REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(yaml-cpp REQUIRED)
 
+# 查找nlohmann_json包
+find_package(nlohmann_json REQUIRED)
+
 # 显式查找detect_interfaces 和 mycustface自定义消息包
 find_package(detect_interfaces REQUIRED)
 find_package(mycustface REQUIRED)
@@ -157,6 +160,7 @@ ament_target_dependencies(JH_ROS_stitch
   detect_interfaces
   mycustface
   marnav_interfaces
+  nlohmann_json
 )
 
 

@@ -20,5 +20,6 @@ methodsCompare/
 result/
 ROS2BAG/
 VideonImage/
+dataset/
 
 src/marnav_vis/clip-01
