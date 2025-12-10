@@ -117,12 +117,12 @@ class ConfigManager:
                         logger.error(f"相机{i}配置缺少必需参数: id/rtsp_url")
                         valid = False
         
-        # 验证RTK配置
-        if 'rtk' in devices:
-            rtk = devices['rtk']
-            if rtk.get('enabled', False):
-                if 'udp_port' not in rtk:
-                    logger.error("RTK配置缺少必需参数: udp_port")
+        # 验证GNSS配置
+        if 'gnss' in devices:
+            gnss = devices['gnss']
+            if gnss.get('enabled', False):
+                if 'udp_port' not in gnss:
+                    logger.error("GNSS配置缺少必需参数: udp_port")
                     valid = False
         
         return valid
@@ -152,8 +152,8 @@ class ConfigManager:
         """验证时间同步配置"""
         sync = self.config.get('sync', {})
         
-        if sync.get('reference_source') != 'rtk':
-            logger.warning("时间基准建议设置为rtk")
+        if sync.get('reference_source') != 'gnss':
+            logger.warning("时间基准建议设置为gnss")
         
         return True
     
@@ -179,9 +179,9 @@ class ConfigManager:
                 cam_id = camera['id']
                 results[cam_id] = self._verify_camera_connectivity(camera)
         
-        # 验证RTK UDP连通性
-        if devices.get('rtk', {}).get('enabled', False):
-            results['rtk'] = self._verify_rtk_connectivity()
+        # 验证GNSS UDP连通性
+        if devices.get('gnss', {}).get('enabled', False):
+            results['gnss'] = self._verify_gnss_connectivity()
         
         self.validation_results = results
         return results
@@ -270,11 +270,11 @@ class ConfigManager:
             logger.error(f"❌ 相机{cam_id}连接异常: {e}")
             return False
     
-    def _verify_rtk_connectivity(self) -> bool:
-        """验证RTK UDP连通性"""
-        rtk_config = self.config['devices']['rtk']
-        udp_port = rtk_config['udp_port']
-        bind_address = rtk_config.get('bind_address', '0.0.0.0')
+    def _verify_gnss_connectivity(self) -> bool:
+        """验证GNSS UDP连通性"""
+        gnss_config = self.config['devices']['gnss']
+        udp_port = gnss_config['udp_port']
+        bind_address = gnss_config.get('bind_address', '0.0.0.0')
         
         try:
             # 尝试绑定UDP端口
@@ -282,15 +282,15 @@ class ConfigManager:
             sock.bind((bind_address, udp_port))
             sock.settimeout(1.0)
             
-            logger.info(f"✅ RTK UDP端口绑定成功: {bind_address}:{udp_port}")
+            logger.info(f"✅ GNSS UDP端口绑定成功: {bind_address}:{udp_port}")
             sock.close()
             return True
             
         except socket.error as e:
-            logger.error(f"❌ RTK UDP端口绑定失败: {bind_address}:{udp_port} - {e}")
+            logger.error(f"❌ GNSS UDP端口绑定失败: {bind_address}:{udp_port} - {e}")
             return False
         except Exception as e:
-            logger.error(f"❌ RTK连接验证异常: {e}")
+            logger.error(f"❌ GNSS连接验证异常: {e}")
             return False
     
     def get_device_config(self, device_type: str) -> Optional[Dict]:
@@ -298,7 +298,7 @@ class ConfigManager:
         获取指定设备的配置
         
         Args:
-            device_type: 设备类型 (ais/cameras/rtk)
+            device_type: 设备类型 (ais/cameras/gnss)
             
         Returns:
             设备配置字典

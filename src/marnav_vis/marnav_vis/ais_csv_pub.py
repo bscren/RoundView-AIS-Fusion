@@ -17,19 +17,25 @@ class AisPubNode(Node):
         super().__init__('ais_csv_publisher_node')
 
         # 声明参数
-        self.declare_parameter('ais_csv_folder', '/home/tl/RV/src/marnav_vis/clip-01/ais/')
-        
+        self.declare_parameters(
+            namespace='',
+            parameters=[
+                ('ais_csv_folder', '/home/tl/RV/src/marnav_vis/clip-01/ais/'),
+                ('ais_csv_topic', '/ais_csv_topic')
+            ]
+        )
         # 不用声明发布频率参数，固定为1Hz
 
         # 读取AIS数据文件夹路径
         self.ais_csv_folder = self.get_parameter('ais_csv_folder').get_parameter_value().string_value
+        self.ais_csv_topic = self.get_parameter('ais_csv_topic').get_parameter_value().string_value
         self.get_logger().info(f"AIS CSV folder set to: {self.ais_csv_folder}")
 
 
         # 创建AIS消息发布者
         self.ais_publisher = self.create_publisher(
             Ais,
-            '/ais_csv_topic',
+            self.ais_csv_topic,
             10,# 队列大小
         )
         # 创建定时器，1秒钟触发一次

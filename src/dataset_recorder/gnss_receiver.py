@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-RTK数据接收模块
-负责从UDP端口接收并解析RTK AGRICA报文
+GNSS数据接收模块
+负责从UDP端口接收并解析GNSS AGRICA报文
 """
 
 import socket
@@ -21,8 +21,8 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
-class RTKData:
-    """RTK数据结构"""
+class GNSSData:
+    """GNSS数据结构"""
     timestamp: float  # 系统时间戳
     utc_time: Optional[datetime]  # UTC时间（from AGRICA）
     latitude: Optional[float]  # 纬度（度）
@@ -40,15 +40,15 @@ class RTKData:
     valid: bool  # 数据是否有效（location_quality>=2 and heading_quality>=2）
 
 
-class RTKReceiver:
-    """RTK数据接收器"""
+class GNSSReceiver:
+    """GNSS数据接收器"""
     
     def __init__(self, config: Dict, save_path: Optional[str] = None):
         """
-        初始化RTK接收器
+        初始化GNSS接收器
         
         Args:
-            config: RTK配置字典
+            config: GNSS配置字典
             save_path: CSV文件保存路径（如果为None则不保存）
         """
         self.config = config
@@ -92,7 +92,7 @@ class RTKReceiver:
         # 创建保存目录
         if self.save_enabled:
             self.save_path.mkdir(parents=True, exist_ok=True)
-            logger.info(f"RTK数据将保存到: {self.save_path}")
+            logger.info(f"GNSS数据将保存到: {self.save_path}")
         
     def connect(self) -> bool:
         """
@@ -110,14 +110,14 @@ class RTKReceiver:
             self.socket.bind((bind_address, udp_port))
             self.socket.settimeout(1.0)
             
-            logger.info(f"RTK UDP端口绑定成功: {bind_address}:{udp_port}")
+            logger.info(f"GNSS UDP端口绑定成功: {bind_address}:{udp_port}")
             return True
             
         except socket.error as e:
-            logger.error(f"RTK UDP端口绑定失败: {e}")
+            logger.error(f"GNSS UDP端口绑定失败: {e}")
             return False
         except Exception as e:
-            logger.error(f"RTK连接异常: {e}")
+            logger.error(f"GNSS连接异常: {e}")
             return False
     
     def disconnect(self):
@@ -125,9 +125,9 @@ class RTKReceiver:
         if self.socket:
             try:
                 self.socket.close()
-                logger.info("RTK UDP端口已关闭")
+                logger.info("GNSS UDP端口已关闭")
             except Exception as e:
-                logger.warning(f"关闭RTK UDP端口异常: {e}")
+                logger.warning(f"关闭GNSS UDP端口异常: {e}")
     
     def start(self) -> bool:
         """
@@ -137,7 +137,7 @@ class RTKReceiver:
             启动是否成功
         """
         if self.running:
-            logger.warning("RTK接收器已在运行")
+            logger.warning("GNSS接收器已在运行")
             return True
         
         if not self.socket:
@@ -152,9 +152,9 @@ class RTKReceiver:
         if self.save_enabled:
             self.save_thread = threading.Thread(target=self._save_loop, daemon=True)
             self.save_thread.start()
-            logger.info("RTK CSV保存线程已启动")
+            logger.info("GNSS CSV保存线程已启动")
         
-        logger.info("RTK接收线程已启动")
+        logger.info("GNSS接收线程已启动")
         return True
     
     def stop(self):
@@ -173,16 +173,16 @@ class RTKReceiver:
             self._flush_remaining_data()
         
         self.disconnect()
-        logger.info("RTK接收线程已停止")
+        logger.info("GNSS接收线程已停止")
     
     def _receive_loop(self):
         """接收循环（在独立线程中运行）"""
-        logger.info("RTK接收循环开始")
+        logger.info("GNSS接收循环开始")
         
         while self.running:
             try:
                 if not self.socket:
-                    logger.warning("RTK UDP套接字未连接，尝试重连...")
+                    logger.warning("GNSS UDP套接字未连接，尝试重连...")
                     if not self.connect():
                         time.sleep(5.0)
                         continue
@@ -205,10 +205,10 @@ class RTKReceiver:
                     time.sleep(1.0)
                     
             except Exception as e:
-                logger.error(f"RTK接收循环异常: {e}")
+                logger.error(f"GNSS接收循环异常: {e}")
                 time.sleep(1.0)
         
-        logger.info("RTK接收循环结束")
+        logger.info("GNSS接收循环结束")
     
     def _process_message(self, message: str):
         """
@@ -228,9 +228,9 @@ class RTKReceiver:
         agrica_msg = agrica_match.group(0)
 
         # 解析AGRICA报文
-        rtk_data = self._parse_agrica(agrica_msg)
+        gnss_data = self._parse_agrica(agrica_msg)
 
-        if not rtk_data:
+        if not gnss_data:
             with self.stats_lock:
                 self.stats['parse_errors'] += 1
             return
@@ -239,53 +239,53 @@ class RTKReceiver:
         quality_threshold = self.config.get('quality_threshold', 1)
         
         # 检查定位质量
-        if rtk_data.location_quality is None or rtk_data.location_quality < quality_threshold:
+        if gnss_data.location_quality is None or gnss_data.location_quality < quality_threshold:
             with self.stats_lock:
                 self.stats['invalid_location_quality'] += 1
                 # 前5次失败时输出详细信息，之后只debug
                 if self.stats['invalid_location_quality'] <= 5:
-                    logger.warning(f"RTK定位质量不足: {rtk_data.location_quality} < {quality_threshold} "
+                    logger.warning(f"GNSS定位质量不足: {gnss_data.location_quality} < {quality_threshold} "
                                  f"(阈值={quality_threshold}, 已过滤{self.stats['invalid_location_quality']}条)")
                 else:
-                    logger.debug(f"RTK定位质量不足: {rtk_data.location_quality} < {quality_threshold}")
+                    logger.debug(f"GNSS定位质量不足: {gnss_data.location_quality} < {quality_threshold}")
             return
         
         # 检查定向质量
-        if rtk_data.heading_quality is None or rtk_data.heading_quality < quality_threshold:
+        if gnss_data.heading_quality is None or gnss_data.heading_quality < quality_threshold:
             with self.stats_lock:
                 self.stats['invalid_heading_quality'] += 1
                 # 前5次失败时输出详细信息，之后只debug
                 if self.stats['invalid_heading_quality'] <= 5:
-                    logger.warning(f"RTK定向质量不足: {rtk_data.heading_quality} < {quality_threshold} "
+                    logger.warning(f"GNSS定向质量不足: {gnss_data.heading_quality} < {quality_threshold} "
                                  f"(阈值={quality_threshold}, 已过滤{self.stats['invalid_heading_quality']}条)")
                 else:
-                    logger.debug(f"RTK定向质量不足: {rtk_data.heading_quality} < {quality_threshold}")
+                    logger.debug(f"GNSS定向质量不足: {gnss_data.heading_quality} < {quality_threshold}")
             return
 
         # 验证时间连续性
-        if not self._validate_time_continuity(rtk_data):
+        if not self._validate_time_continuity(gnss_data):
             with self.stats_lock:
                 self.stats['time_discontinuity'] += 1
-            logger.warning("RTK时间不连续")
+            logger.warning("GNSS时间不连续")
 
         # 记录第一条数据的UTC时间
-        if self.first_data_time is None and rtk_data.utc_time:
-            self.first_data_time = rtk_data.utc_time
-            logger.info(f"RTK首条数据时间: {self.first_data_time.strftime('%Y_%m_%d_%H_%M_%S')}")
+        if self.first_data_time is None and gnss_data.utc_time:
+            self.first_data_time = gnss_data.utc_time
+            logger.info(f"GNSS首条数据时间: {self.first_data_time.strftime('%Y_%m_%d_%H_%M_%S')}")
         
         # 添加到保存缓存
         if self.save_enabled:
             with self.data_cache_lock:
-                self.current_second_data.append(rtk_data)
+                self.current_second_data.append(gnss_data)
 
         # 入队
-        self._enqueue_data(rtk_data)
+        self._enqueue_data(gnss_data)
         with self.stats_lock:
             self.stats['valid_data'] += 1
 
-    def _parse_agrica(self, agrica_msg: str) -> Optional[RTKData]:
+    def _parse_agrica(self, agrica_msg: str) -> Optional[GNSSData]:
         """
-        解析#AGRICA原始报文内容，字段提取方式参考rtk_parser_example.py
+        解析#AGRICA原始报文内容，字段提取方式参考gnss_parser_example.py
         
         字段位置参考：
         - [2-7]: 年月日时分秒
@@ -383,7 +383,7 @@ class RTKReceiver:
             except Exception:
                 hdop = None
             
-            rtk_data = RTKData(
+            gnss_data = GNSSData(
                 timestamp=time.time(),
                 utc_time=utc_time,
                 latitude=latitude,
@@ -400,7 +400,7 @@ class RTKReceiver:
                 raw_message=agrica_msg,
                 valid=(location_quality is not None and location_quality >= 1 and heading_quality is not None and heading_quality >= 1)
             )
-            return rtk_data
+            return gnss_data
         except Exception as e:
             logger.debug(f"AGRICA解析失败: {e}")
             return None
@@ -476,23 +476,23 @@ class RTKReceiver:
             logger.debug(f"经度解析失败: {e}")
             return None
     
-    def _validate_time_continuity(self, rtk_data: RTKData) -> bool:
+    def _validate_time_continuity(self, gnss_data: GNSSData) -> bool:
         """
         验证时间连续性
         
         Args:
-            rtk_data: RTK数据
+            gnss_data: GNSS数据
             
         Returns:
             时间是否连续
         """
-        if not self.last_timestamp or not rtk_data.timestamp:
-            self.last_timestamp = rtk_data.timestamp
-            self.last_valid_time = rtk_data.utc_time
+        if not self.last_timestamp or not gnss_data.timestamp:
+            self.last_timestamp = gnss_data.timestamp
+            self.last_valid_time = gnss_data.utc_time
             return True
         
         # 计算时间差
-        time_diff = rtk_data.timestamp - self.last_timestamp
+        time_diff = gnss_data.timestamp - self.last_timestamp
         
         # 期望时间间隔（例如5Hz = 0.2秒）
         # 允许±50%的误差
@@ -504,25 +504,25 @@ class RTKReceiver:
         is_continuous = (min_interval <= time_diff <= max_interval)
         
         # 更新上次时间
-        self.last_timestamp = rtk_data.timestamp
-        if rtk_data.valid:
-            self.last_valid_time = rtk_data.utc_time
+        self.last_timestamp = gnss_data.timestamp
+        if gnss_data.valid:
+            self.last_valid_time = gnss_data.utc_time
         
         return is_continuous
     
-    def _enqueue_data(self, rtk_data: RTKData):
+    def _enqueue_data(self, gnss_data: GNSSData):
         """将数据加入队列"""
         try:
-            self.data_queue.put(rtk_data, block=False)
+            self.data_queue.put(gnss_data, block=False)
         except queue.Full:
-            logger.warning("RTK数据队列已满，丢弃旧数据")
+            logger.warning("GNSS数据队列已满，丢弃旧数据")
             try:
                 self.data_queue.get_nowait()
-                self.data_queue.put(rtk_data, block=False)
+                self.data_queue.put(gnss_data, block=False)
             except queue.Empty:
                 pass
     
-    def get_data(self, timeout: Optional[float] = None) -> Optional[RTKData]:
+    def get_data(self, timeout: Optional[float] = None) -> Optional[GNSSData]:
         """
         从队列获取数据
         
@@ -530,16 +530,16 @@ class RTKReceiver:
             timeout: 超时时间（秒）
             
         Returns:
-            RTK数据对象
+            GNSS数据对象
         """
         try:
             return self.data_queue.get(timeout=timeout)
         except queue.Empty:
             # 只在debug级别输出，避免日志过多
-            logger.debug("RTK数据队列为空，返回None")
+            logger.debug("GNSS数据队列为空，返回None")
             return None
         except Exception as e:
-            logger.error(f"RTK数据队列获取数据异常: {e}")
+            logger.error(f"GNSS数据队列获取数据异常: {e}")
             return None
     
     def get_statistics(self) -> Dict:
@@ -563,11 +563,11 @@ class RTKReceiver:
         """
         CSV保存循环（每秒触发一次）
         """
-        logger.info("RTK CSV保存线程已启动，等待相机就绪...")
+        logger.info("GNSS CSV保存线程已启动，等待相机就绪...")
         
         # 等待相机开始录制
         self.start_saving_event.wait()
-        logger.info("RTK开始保存数据")
+        logger.info("GNSS开始保存数据")
         
         while self.running:
             try:
@@ -586,17 +586,17 @@ class RTKReceiver:
                     self._save_to_csv(data_to_save)
                     
             except Exception as e:
-                logger.error(f"RTK CSV保存循环异常: {e}")
+                logger.error(f"GNSS CSV保存循环异常: {e}")
                 time.sleep(1.0)
         
-        logger.info("RTK CSV保存循环结束")
+        logger.info("GNSS CSV保存循环结束")
     
-    def _save_to_csv(self, data_list: List[RTKData]):
+    def _save_to_csv(self, data_list: List[GNSSData]):
         """
         将数据列表保存为CSV文件
         
         Args:
-            data_list: RTK数据列表
+            data_list: GNSS数据列表
         """
         if not data_list or not self.save_path:
             return
@@ -609,7 +609,7 @@ class RTKReceiver:
             else:
                 time_str = datetime.now(timezone.utc).strftime('%Y_%m_%d_%H_%M_%S')
             
-            filename = f"rtk_{time_str}.csv"
+            filename = f"gnss_{time_str}.csv"
             filepath = self.save_path / filename
             
             # 检查文件是否存在
@@ -630,31 +630,31 @@ class RTKReceiver:
                         self.stats['csv_files'] += 1
                 
                 # 写入数据行
-                for rtk_data in data_list:
+                for gnss_data in data_list:
                     writer.writerow([
-                        f"{rtk_data.timestamp:.6f}",
-                        rtk_data.utc_time.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3] if rtk_data.utc_time else '',
-                        f"{rtk_data.latitude:.8f}" if rtk_data.latitude is not None else '',
-                        f"{rtk_data.longitude:.8f}" if rtk_data.longitude is not None else '',
-                        f"{rtk_data.heading:.2f}" if rtk_data.heading is not None else '',
-                        f"{rtk_data.pitch:.2f}" if rtk_data.pitch is not None else '',
-                        f"{rtk_data.roll:.2f}" if rtk_data.roll is not None else '',
-                        f"{rtk_data.altitude:.3f}" if rtk_data.altitude is not None else '',
-                        f"{rtk_data.speed:.2f}" if rtk_data.speed is not None else '',
-                        rtk_data.location_quality if rtk_data.location_quality is not None else '',
-                        rtk_data.heading_quality if rtk_data.heading_quality is not None else '',
-                        rtk_data.satellites if rtk_data.satellites is not None else '',
-                        f"{rtk_data.hdop:.2f}" if rtk_data.hdop is not None else '',
-                        rtk_data.raw_message
+                        f"{gnss_data.timestamp:.6f}",
+                        gnss_data.utc_time.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3] if gnss_data.utc_time else '',
+                        f"{gnss_data.latitude:.8f}" if gnss_data.latitude is not None else '',
+                        f"{gnss_data.longitude:.8f}" if gnss_data.longitude is not None else '',
+                        f"{gnss_data.heading:.2f}" if gnss_data.heading is not None else '',
+                        f"{gnss_data.pitch:.2f}" if gnss_data.pitch is not None else '',
+                        f"{gnss_data.roll:.2f}" if gnss_data.roll is not None else '',
+                        f"{gnss_data.altitude:.3f}" if gnss_data.altitude is not None else '',
+                        f"{gnss_data.speed:.2f}" if gnss_data.speed is not None else '',
+                        gnss_data.location_quality if gnss_data.location_quality is not None else '',
+                        gnss_data.heading_quality if gnss_data.heading_quality is not None else '',
+                        gnss_data.satellites if gnss_data.satellites is not None else '',
+                        f"{gnss_data.hdop:.2f}" if gnss_data.hdop is not None else '',
+                        gnss_data.raw_message
                     ])
             
             with self.stats_lock:
                 self.stats['saved_count'] += len(data_list)
             
-            logger.debug(f"保存RTK数据: {len(data_list)}条 -> {filename}")
+            logger.debug(f"保存GNSS数据: {len(data_list)}条 -> {filename}")
             
         except Exception as e:
-            logger.error(f"保存RTK CSV失败: {e}")
+            logger.error(f"保存GNSS CSV失败: {e}")
     
     def _flush_remaining_data(self):
         """
@@ -662,7 +662,7 @@ class RTKReceiver:
         """
         with self.data_cache_lock:
             if self.current_second_data:
-                logger.info(f"刷新剩余RTK数据: {len(self.current_second_data)}条")
+                logger.info(f"刷新剩余GNSS数据: {len(self.current_second_data)}条")
                 self._save_to_csv(self.current_second_data)
                 self.current_second_data = []
 
@@ -682,16 +682,16 @@ if __name__ == "__main__":
         'quality_threshold': 1
     }
     
-    receiver = RTKReceiver(test_config)
+    receiver = GNSSReceiver(test_config)
     
     if receiver.start():
-        print("RTK接收器已启动，按Ctrl+C停止...")
+        print("GNSS接收器已启动，按Ctrl+C停止...")
         
         try:
             while True:
                 data = receiver.get_data(timeout=1.0)
                 if data:
-                    print(f"收到RTK数据:")
+                    print(f"收到GNSS数据:")
                     print(f"  UTC时间: {data.utc_time}")
                     print(f"  位置: Lat={data.latitude:.6f}°, Lon={data.longitude:.6f}°, Alt={data.altitude:.2f}m")
                     print(f"  姿态: Heading={data.heading:.2f}°, Pitch={data.pitch:.2f}°, Roll={data.roll:.2f}°")
@@ -711,5 +711,5 @@ if __name__ == "__main__":
             # 打印最终统计
             print(f"\n最终统计: {receiver.get_statistics()}")
     else:
-        print("RTK接收器启动失败")
+        print("GNSS接收器启动失败")
 

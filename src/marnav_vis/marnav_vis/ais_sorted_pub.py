@@ -18,19 +18,23 @@ class AisBatchPublisher(Node):
             parameters=[
                 # ========= 后需要改为动态传参，目前暂时是手动定义的参数 =========
                 ('ais_start_timestamp', 1654315512000),  # AIS数据集起始时间戳，单位：毫秒
+                ('ais_csv_topic', '/ais_csv_topic'),  # 原始单条AIS数据话题
+                ('ais_batch_pub_topic', '/ais_batch_topic_offline'),  # 批量发布的话题名
                 # ================================================
             ]
         )
         # 创建后续实时更新的时间戳
         self.ais_batch_microtimestamp = self.get_parameter('ais_start_timestamp').value
+        self.ais_csv_topic = self.get_parameter('ais_csv_topic').value
+        self.ais_batch_pub_topic = self.get_parameter('ais_batch_pub_topic').value
         self.get_logger().info(f"AIS Batch Publisher Node initialized with start timestamp: {self.ais_batch_microtimestamp}")
 
 
         
-        # 订阅原始AIS单条消息
+        # 订阅原始单条AIS数据消息
         self.subscription = self.create_subscription(
             Ais,
-            '/ais_csv_topic',  # 订阅原始话题
+            self.ais_csv_topic,  # 订阅原始单条AIS数据话题
             self.ais_callback,
             10  # 队列大小
         )
@@ -38,7 +42,7 @@ class AisBatchPublisher(Node):
         # 创建批量数据发布者
         self.batch_publisher = self.create_publisher(
             AisBatch,
-            '/ais_batch_topic',  # 新的批量数据话题
+            self.ais_batch_pub_topic,  # 离线批量数据话题
             10
         )
         

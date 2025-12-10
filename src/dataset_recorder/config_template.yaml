@@ -1,4 +1,4 @@
-# 多相机-AIS-RTK数据集录制工具配置文件
+# 多相机-AIS-GNSS数据集录制工具配置文件
 # 配置说明：请根据实际设备参数修改以下配置
 
 # ============ 设备配置 ============
@@ -69,8 +69,8 @@ devices:
         p2: 0.0
       enabled: true
     
-  # RTK设备配置（UDP）
-  rtk:
+  # GNSS设备配置（UDP）
+  gnss:
     enabled: true
     udp_port: 8010                 # UDP监听端口
     bind_address: "0.0.0.0"        # 绑定地址（0.0.0.0表示监听所有网卡）
@@ -101,8 +101,8 @@ fault_tolerance:
     retry_interval: 5                # 重连间隔（秒）
     max_retries: 3                   # 最大重试次数（0表示无限重试）
     
-  # RTK质量无效处理
-  rtk_invalid:
+  # GNSS质量无效处理
+  gnss_invalid:
     use_estimated_time: true         # 使用估算时间
     max_invalid_duration: 30         # 最大无效持续时间（秒）
     alert_threshold: 30              # 告警阈值（秒）

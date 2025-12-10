@@ -194,10 +194,9 @@ class AisVisNode(Node):
                 ('camera_topics', ['/camera_image_topic_0', '/camera_image_topic_1', '/camera_image_topic_2']),
                 # ('camera_topics', ['/rtsp_image_0', '/rtsp_image_1', '/rtsp_image_2']),
         # =================================================== DEBUG ===================================================
-
-                ('aisbatch_topic', '/ais_batch_topic'),
+                ('ais_batch_pub_topic', '/ais_batch_topic'),
+                ('gnss_pub_topic', '/gnss_pub_topic'),
                 ('fus_trajectory_topic', '/fus_trajectory_topic'),
-                ('gnss_topic', '/gnss_topic'),
                 ('input_fps', 15),
                 ('output_fps', 10),
                 ('anti', 1),
@@ -225,9 +224,9 @@ class AisVisNode(Node):
         # =================================================== DEBUG ===================================================
 
 
-        self.aisbatch_topic = self.get_parameter('aisbatch_topic').get_parameter_value().string_value
+        self.ais_batch_pub_topic = self.get_parameter('ais_batch_pub_topic').get_parameter_value().string_value
         self.fus_trajectory_topic = self.get_parameter('fus_trajectory_topic').get_parameter_value().string_value
-        self.gnss_topic = self.get_parameter('gnss_topic').get_parameter_value().string_value
+        self.gnss_pub_topic = self.get_parameter('gnss_pub_topic').get_parameter_value().string_value
         self.input_fps = self.get_parameter('input_fps').get_parameter_value().integer_value
         self.t = int(1000 / self.input_fps)
         self.output_fps = self.get_parameter('output_fps').get_parameter_value().integer_value
@@ -296,13 +295,13 @@ class AisVisNode(Node):
         # 订阅AIS和GNSS数据
         self.aisbatch_subscriber = self.create_subscription(
             AisBatch,
-            self.aisbatch_topic,
+            self.ais_batch_pub_topic,
             self.aisbatch_callback,
             10
         )
         self.gnss_subscriber = self.create_subscription(
             Gnss,
-            self.gnss_topic,
+            self.gnss_pub_topic,
             self.gnss_callback,
             10
         )
@@ -525,7 +524,9 @@ class AisVisNode(Node):
                     msg = VisiableTra()
                     # 使用映射后的相机名称（与C++拼接节点保持一致）
                     topic_name = self.camera_topics[cam_idx]
+                    # =================================================== DEBUG ===================================================
                     msg.camera_name = self.camera_name_mapping.get(topic_name, topic_name)
+                    # =================================================== DEBUG ===================================================
                     # 将毫秒时间戳转换为 ROS Time (sec + nanosec)
                     timestamp_ms = int(tra.get('timestamp', 0))
                     msg.timestamp.sec = timestamp_ms // 1000

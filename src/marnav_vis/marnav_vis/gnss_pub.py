@@ -20,15 +20,22 @@ class GnssPublisher(Node):
     def __init__(self):
         super().__init__('gnss_publisher_node')
         
-        # 1. 声明参数：发布帧率（默认10Hz）
-        self.declare_parameter('publish_rate', 10.0)  # 单位：Hz
+        # 1. 声明参数：发布帧率（默认5Hz）
+        self.declare_parameters(
+            namespace='',
+            parameters=[
+                ('publish_rate', 5.0),
+                ('gnss_pub_topic', '/gnss_pub_topic')
+            ]
+        )  # 单位：Hz
         self.publish_rate = self.get_parameter('publish_rate').get_parameter_value().double_value
+        self.gnss_pub_topic = self.get_parameter('gnss_pub_topic').get_parameter_value().string_value
         self.timer_period = 1.0 / self.publish_rate  # 定时器周期（秒）
         
         # 2. 创建发布者
         self.publisher_ = self.create_publisher(
             Gnss,
-            '/gnss_topic',  # 发布话题名称
+            self.gnss_pub_topic,  # 发布话题名称
             10  # 队列大小
         )
         

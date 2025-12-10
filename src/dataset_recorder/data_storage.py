@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 数据存储模块
-负责结构化存储AIS、RTK、相机数据
+负责结构化存储AIS、GNSS、相机数据
 """
 
 import os
@@ -51,7 +51,7 @@ class DataStorage:
         self.expire_time = cache_config.get('expire_time', 300)
         
         # 分桶缓存（按数据类型）
-        self.rtk_cache = []  # RTK数据缓存
+        self.gnss_cache = []  # GNSS数据缓存
         self.ais_cache = []  # AIS数据缓存
         self.camera_cache = {}  # 相机帧缓存 {camera_id: [frames]}
         
@@ -65,7 +65,7 @@ class DataStorage:
         # 统计信息
         self.stats = {
             'total_clips': 0,
-            'rtk_saved': 0,
+            'gnss_saved': 0,
             'ais_saved': 0,
             'frames_saved': 0,
             'batches_written': 0
@@ -73,7 +73,7 @@ class DataStorage:
         self.stats_lock = threading.Lock()
         
         # 当前秒的数据缓存（用于每秒保存）
-        self.current_second_rtk = []
+        self.current_second_gnss = []
         self.current_second_ais = []
         self.last_save_time = None
         
@@ -89,7 +89,7 @@ class DataStorage:
         目录结构：clip_年_月_日_时_分_秒/
         
         Args:
-            timestamp: UTC时间戳（from RTK），如果为None则使用系统时间
+            timestamp: UTC时间戳（from GNSS），如果为None则使用系统时间
             
         Returns:
             clip目录路径
@@ -102,7 +102,7 @@ class DataStorage:
         clip_path = self.root_path / clip_name
         
         # 创建子目录结构
-        subdirs = ['rtk', 'ais', 'camera', 'metadata']
+        subdirs = ['gnss', 'ais', 'camera', 'metadata']
         
         try:
             for subdir in subdirs:
@@ -143,15 +143,15 @@ class DataStorage:
         
         logger.info(f"为{len(camera_ids)}个相机创建子目录")
     
-    def add_rtk_data(self, rtk_data):
+    def add_gnss_data(self, gnss_data):
         """
-        添加RTK数据到缓存
+        添加GNSS数据到缓存
         
         Args:
-            rtk_data: RTK数据对象
+            gnss_data: GNSS数据对象
         """
         with self.cache_lock:
-            self.current_second_rtk.append(rtk_data)
+            self.current_second_gnss.append(gnss_data)
     
     def add_ais_data(self, ais_data):
         """
@@ -187,29 +187,29 @@ class DataStorage:
                 self.camera_cache[cam_id] = []
             self.camera_cache[cam_id].append(camera_frame)
     
-    def save_rtk_batch(self, rtk_list: List, utc_time: datetime):
+    def save_gnss_batch(self, gnss_list: List, utc_time: datetime):
         """
-        批量保存RTK数据到CSV
+        批量保存GNSS数据到CSV
         
-        命名：rtk_年_月_日_时_分_秒.csv（优先使用数据列表第一条的UTC时间）
+        命名：gnss_年_月_日_时_分_秒.csv（优先使用数据列表第一条的UTC时间）
         
         Args:
-            rtk_list: RTK数据列表
+            gnss_list: GNSS数据列表
             utc_time: 备用UTC时间（当数据中无时间时使用）
         """
-        if not rtk_list or not self.current_clip_path:
+        if not gnss_list or not self.current_clip_path:
             return
         
         try:
             # 优先使用数据本身的时间
-            if rtk_list and rtk_list[0].utc_time:
-                target_time = rtk_list[0].utc_time
+            if gnss_list and gnss_list[0].utc_time:
+                target_time = gnss_list[0].utc_time
             else:
                 target_time = utc_time
 
             # 生成文件名
-            filename = f"rtk_{target_time.strftime('%Y_%m_%d_%H_%M_%S')}.csv"
-            filepath = self.current_clip_path / 'rtk' / filename
+            filename = f"gnss_{target_time.strftime('%Y_%m_%d_%H_%M_%S')}.csv"
+            filepath = self.current_clip_path / 'gnss' / filename
             
             # 检查文件是否存在
             file_exists = filepath.exists()
@@ -227,31 +227,31 @@ class DataStorage:
                     ])
                 
                 # 写入数据行
-                for rtk_data in rtk_list:
+                for gnss_data in gnss_list:
                     writer.writerow([
-                        f"{rtk_data.timestamp:.6f}",
-                        rtk_data.utc_time.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3] if rtk_data.utc_time else '',
-                        f"{rtk_data.latitude:.8f}" if rtk_data.latitude is not None else '',
-                        f"{rtk_data.longitude:.8f}" if rtk_data.longitude is not None else '',
-                        f"{rtk_data.heading:.2f}" if rtk_data.heading is not None else '',
-                        f"{rtk_data.pitch:.2f}" if rtk_data.pitch is not None else '',
-                        f"{rtk_data.roll:.2f}" if rtk_data.roll is not None else '',
-                        f"{rtk_data.altitude:.3f}" if rtk_data.altitude is not None else '',
-                        f"{rtk_data.speed:.2f}" if rtk_data.speed is not None else '',
-                        rtk_data.location_quality if rtk_data.location_quality is not None else '',
-                        rtk_data.heading_quality if rtk_data.heading_quality is not None else '',
-                        rtk_data.satellites if rtk_data.satellites is not None else '',
-                        f"{rtk_data.hdop:.2f}" if rtk_data.hdop is not None else '',
-                        rtk_data.raw_message
+                        f"{gnss_data.timestamp:.6f}",
+                        gnss_data.utc_time.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3] if gnss_data.utc_time else '',
+                        f"{gnss_data.latitude:.8f}" if gnss_data.latitude is not None else '',
+                        f"{gnss_data.longitude:.8f}" if gnss_data.longitude is not None else '',
+                        f"{gnss_data.heading:.2f}" if gnss_data.heading is not None else '',
+                        f"{gnss_data.pitch:.2f}" if gnss_data.pitch is not None else '',
+                        f"{gnss_data.roll:.2f}" if gnss_data.roll is not None else '',
+                        f"{gnss_data.altitude:.3f}" if gnss_data.altitude is not None else '',
+                        f"{gnss_data.speed:.2f}" if gnss_data.speed is not None else '',
+                        gnss_data.location_quality if gnss_data.location_quality is not None else '',
+                        gnss_data.heading_quality if gnss_data.heading_quality is not None else '',
+                        gnss_data.satellites if gnss_data.satellites is not None else '',
+                        f"{gnss_data.hdop:.2f}" if gnss_data.hdop is not None else '',
+                        gnss_data.raw_message
                     ])
             
             with self.stats_lock:
-                self.stats['rtk_saved'] += len(rtk_list)
+                self.stats['gnss_saved'] += len(gnss_list)
             
-            logger.debug(f"保存RTK数据: {len(rtk_list)}条 -> {filename}")
+            logger.debug(f"保存GNSS数据: {len(gnss_list)}条 -> {filename}")
             
         except Exception as e:
-            logger.error(f"保存RTK数据失败: {e}")
+            logger.error(f"保存GNSS数据失败: {e}")
     
     def save_ais_batch(self, ais_list: List, utc_time: datetime):
         """
@@ -321,7 +321,7 @@ class DataStorage:
         
         Args:
             camera_frame: CameraFrame对象
-            utc_time: RTK UTC时间
+            utc_time: GNSS UTC时间
             index: 帧索引（用于区分同一秒内的多帧）
         """
         if not self.current_clip_path:
@@ -439,10 +439,10 @@ class DataStorage:
                 return
         
         with self.cache_lock:
-            # 保存RTK数据
-            if self.current_second_rtk:
-                self.save_rtk_batch(self.current_second_rtk, current_utc)
-                self.current_second_rtk = []
+            # 保存GNSS数据
+            if self.current_second_gnss:
+                self.save_gnss_batch(self.current_second_gnss, current_utc)
+                self.current_second_gnss = []
             
             # 保存AIS数据
             if self.current_second_ais:
@@ -467,9 +467,9 @@ class DataStorage:
         expire_threshold = self.expire_time
         
         with self.cache_lock:
-            # 清理RTK缓存
-            self.current_second_rtk = [
-                d for d in self.current_second_rtk
+            # 清理GNSS缓存
+            self.current_second_gnss = [
+                d for d in self.current_second_gnss
                 if current_time - d.timestamp < expire_threshold
             ]
             
@@ -493,11 +493,11 @@ class DataStorage:
         current_utc = datetime.now(timezone.utc)
         
         with self.cache_lock:
-            # 保存RTK数据
-            if self.current_second_rtk:
-                self.save_rtk_batch(self.current_second_rtk, current_utc)
-                logger.info(f"刷新RTK数据: {len(self.current_second_rtk)}条")
-                self.current_second_rtk = []
+            # 保存GNSS数据
+            if self.current_second_gnss:
+                self.save_gnss_batch(self.current_second_gnss, current_utc)
+                logger.info(f"刷新GNSS数据: {len(self.current_second_gnss)}条")
+                self.current_second_gnss = []
             
             # 保存AIS数据
             if self.current_second_ais:
@@ -562,7 +562,7 @@ class DataStorage:
         print("数据存储统计")
         print("="*60)
         print(f"数据包数量: {stats['total_clips']}")
-        print(f"RTK数据: {stats['rtk_saved']}条")
+        print(f"GNSS数据: {stats['gnss_saved']}条")
         print(f"AIS数据: {stats['ais_saved']}条")
         print(f"相机帧: {stats['frames_saved']}帧")
         print(f"批次数: {stats['batches_written']}")

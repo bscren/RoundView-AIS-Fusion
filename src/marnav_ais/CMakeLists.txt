@@ -11,6 +11,7 @@ find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(GeographicLib REQUIRED)
 find_package(marnav_interfaces REQUIRED)
+find_package(Boost REQUIRED COMPONENTS system)
 # uncomment the following section in order to fill in
 # further dependencies manually.
 # find_package(<dependency> REQUIRED)
@@ -54,27 +55,52 @@ include_directories(
 
 
 # ========== 3. 链接 marnav 库到你的目标（AIS 解析节点） ==========
-add_executable(ais_parser_node src/ais_parser_node.cpp)  
-
-# 5. 链接 libserial 库（在 target_link_libraries 中使用 ${LIBSERIAL_LIBRARY}）
-# 链接 marnav 库（marnav 编译后会生成名为 `marnav` 的库）
-target_link_libraries(ais_parser_node  
+# 原版节点（完整解析AIVDM/RMC/GGA）
+add_executable(ais_parser_pub_node src/ais_parser_pub_node.cpp)  
+target_link_libraries(ais_parser_pub_node  
     marnav  
-    rclcpp::rclcpp  # 链接 rclcpp 库
-    ${LIBSERIAL_LIBRARY}  # 链接找到的 libserial 库
-    GeographicLib::GeographicLib  # 链接 GeographicLib 库
+    rclcpp::rclcpp
+    ${LIBSERIAL_LIBRARY}
+    Boost::system
+    GeographicLib::GeographicLib
 )  
-
-# 链接 ROS2 依赖（如 rclcpp）
-ament_target_dependencies(ais_parser_node  
+ament_target_dependencies(ais_parser_pub_node  
     rclcpp  
-    std_msgs  # 若需发布消息，可添加
+    std_msgs
     marnav_interfaces
+)
+
+# V2版节点（仅解析AIVDM，批量发布）
+add_executable(ais_parser_batch_pub_node src/ais_parser_batch_pub_node.cpp)  
+target_link_libraries(ais_parser_batch_pub_node  
+    marnav  
+    rclcpp::rclcpp
+    ${LIBSERIAL_LIBRARY}
+    Boost::system
 )  
+ament_target_dependencies(ais_parser_batch_pub_node  
+    rclcpp  
+    std_msgs
+    marnav_interfaces
+)
+
+# GNSS 解析节点（AGRICA -> Gnss.msg，定时发布）
+add_executable(gnss_parser_pub_node src/gnss_parser_pub_node.cpp)
+target_link_libraries(gnss_parser_pub_node
+    rclcpp::rclcpp
+    ${LIBSERIAL_LIBRARY}
+    Boost::system
+)
+ament_target_dependencies(gnss_parser_pub_node
+    rclcpp
+    marnav_interfaces
+)
 
 # ========== 4. 安装可执行文件（让 ROS2 能找到） ==========
 install(TARGETS  
-    ais_parser_node  
+    ais_parser_pub_node
+    ais_parser_batch_pub_node
+    gnss_parser_pub_node
     DESTINATION lib/${PROJECT_NAME}  
 )
 

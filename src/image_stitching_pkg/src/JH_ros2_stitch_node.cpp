@@ -164,6 +164,25 @@ public:
         has_received_images_ = false;
         still_detecting = false;
 
+        // 检查是否使用已保存的相机参数
+        bool use_saved_params = this->get_parameter("use_saved_CameraParams").as_bool();
+        std::string params_path = this->get_parameter("save_CameraParams_path").as_string();
+        
+        if (use_saved_params) {
+            RCLCPP_INFO(this->get_logger(), "========================================");
+            RCLCPP_INFO(this->get_logger(), "📁 use_saved_CameraParams=true");
+            RCLCPP_INFO(this->get_logger(), "✅ 将加载已保存的相机参数，跳过耗时的特征检测和匹配步骤");
+            RCLCPP_INFO(this->get_logger(), "📂 参数文件路径: %s", params_path.c_str());
+            RCLCPP_INFO(this->get_logger(), "⏱️  首次处理时间将大幅缩短（约节省80%%时间）");
+            RCLCPP_INFO(this->get_logger(), "========================================");
+        } else {
+            RCLCPP_INFO(this->get_logger(), "========================================");
+            RCLCPP_INFO(this->get_logger(), "📁 use_saved_CameraParams=false");
+            RCLCPP_INFO(this->get_logger(), "🔍 将进行完整的首次处理：特征检测 → 特征匹配 → 相机参数估计");
+            RCLCPP_INFO(this->get_logger(), "⏱️  首次处理可能需要较长时间（取决于图像分辨率）");
+            RCLCPP_INFO(this->get_logger(), "💾 如需保存参数以加速后续启动，请设置 save_CameraParams=true");
+            RCLCPP_INFO(this->get_logger(), "========================================");
+        }
         
     }
     
@@ -306,8 +325,6 @@ private:
             });
             // 可选：用单独的线程管理 join，避免阻塞
             std::thread(&std::thread::join, &stitch_thread).detach();
-    
-
 
             // 更新拼缝线
                 // stitcher_->detectStitchLine();

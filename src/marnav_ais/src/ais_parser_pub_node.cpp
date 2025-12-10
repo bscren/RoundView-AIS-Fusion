@@ -33,6 +33,7 @@
 #include "std_msgs/msg/string.hpp"  // 引入ROS 2字符串消息类型
 
 #include "marnav_interfaces/msg/ais.hpp"
+#include "marnav_interfaces/msg/ais_batch.hpp"
 #include "marnav_interfaces/msg/gga.hpp"
 #include "marnav_interfaces/msg/rmc.hpp"
 
@@ -253,13 +254,13 @@ class AISParserNode : public rclcpp::Node {
 public:
     AISParserNode() : Node("raw_ais_parser"), comm_interface_(nullptr), running_(false), log_file_(nullptr) {
         // 声明所有配置参数（带默认值）
-        declare_parameter<std::string>("comm_type", "serial");//serial tcp udp
+        declare_parameter<std::string>("comm_type", "udp");//serial tcp udp
         declare_parameter<std::string>("serial_port", "/dev/ttyS3");
         declare_parameter<int>("baud_rate", 38400);
         declare_parameter<std::string>("tcp_ip", "127.0.0.1");
         declare_parameter<int>("tcp_port", 5000);
-        declare_parameter<std::string>("udp_ip", "192.168.0.10");
-        declare_parameter<int>("udp_port", 1300);
+        declare_parameter<std::string>("udp_ip", "0.0.0.0");
+        declare_parameter<int>("udp_port", 1800);
         declare_parameter<std::string>("log_directory", "/home/tl/RV/ais_logs");
         declare_parameter<std::string>("frame_id", "ais");
         declare_parameter<bool>("log_raw_data", false);
@@ -641,7 +642,6 @@ private:
                 return;
 
             }
-
 
 // 3. GGA GPS定位信息: $GPGGA:有用数据如:UTC时间，经纬度，精度，天线高度，
             if(sentence->id() == nmea::sentence_id::GGA){

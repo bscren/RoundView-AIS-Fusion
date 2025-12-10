@@ -14,24 +14,28 @@ import numpy as np
 class CameraPubNode(Node):
     def __init__(self):
         super().__init__("camera_publisher_node")
-        self.declare_parameter('video_path', '/home/tl/RV/src/marnav_vis/clip-01/2022_06_04_12_05_12_12_07_02_b.mp4')
-        self.declare_parameter('publish_fps', 25) # 发布帧率，单位Hz
-        self.declare_parameter('width', 1280) # 图像宽度
-        self.declare_parameter('height', 720) # 图像高度
-        self.declare_parameter('start_timestamp', 1654315512000),  # AIS数据集起始时间戳，单位：毫秒
-        self.declare_parameter('noise_range_ns ', 10 * 1000000),  # 时间戳噪音范围10ms，单位：纳秒 1 ms=1000000 ns
-
+        self.declare_parameters(
+            namespace='',
+            parameters=[
+                ('video_path', '/home/tl/RV/src/marnav_vis/clip-01/2022_06_04_12_05_12_12_07_02_b.mp4'),
+                ('publish_fps', 25),
+                ('width_height', [1280, 720]),
+                ('camera_start_timestamp', 1654315512000),
+                ('noise_range_ns', 10 * 1000000),
+                ('camera_topics',['/camera_image_topic_0', '/camera_image_topic_1', '/camera_image_topic_2'])
+            ]
+        )
         # ============================================================
         self.video_path = self.get_parameter('video_path').get_parameter_value().string_value
         self.publish_fps = self.get_parameter('publish_fps').get_parameter_value().integer_value
         self.get_logger().info(f"Publish FPS: {self.publish_fps}")
-        self.width = self.get_parameter('width').get_parameter_value().integer_value
-        self.height = self.get_parameter('height').get_parameter_value().integer_value
-        self.camera_microtimestamp = self.get_parameter('start_timestamp').get_parameter_value().integer_value
-        self.noise_range_ns = self.get_parameter('noise_range_ns ').get_parameter_value().integer_value
+        self.width_height = self.get_parameter('width_height').get_parameter_value().integer_array_value
+        self.camera_microtimestamp = self.get_parameter('camera_start_timestamp').get_parameter_value().integer_value
+        self.noise_range_ns = self.get_parameter('noise_range_ns').get_parameter_value().integer_value
+        self.camera_topics = self.get_parameter('camera_topics').get_parameter_value().string_array_value
         # ============================================================
 
-        self.get_logger().info(f"Video path: {self.video_path}, Publish FPS: {self.publish_fps}, Width: {self.width}, Height: {self.height}, Start in Time: {self.camera_microtimestamp}")
+        self.get_logger().info(f"Video path: {self.video_path}, Publish FPS: {self.publish_fps}, Width: {self.width_height[0]}, Height: {self.width_height[1]}, Start in Time: {self.camera_microtimestamp}")
 
         self.cap = cv2.VideoCapture(self.video_path)
 
@@ -56,19 +60,19 @@ class CameraPubNode(Node):
         )
         self.image_publisher_0 = self.create_publisher(
             Image, 
-            '/camera_image_topic_0', 
+            self.camera_topics[0], 
             # 10
             qos_profile
             )
         self.image_publisher_1 = self.create_publisher(
             Image, 
-            '/camera_image_topic_1', 
+            self.camera_topics[1], 
             # 10
             qos_profile
             )
         self.image_publisher_2 = self.create_publisher(
             Image, 
-            '/camera_image_topic_2', 
+            self.camera_topics[2], 
             # 10
             qos_profile
             )
@@ -101,7 +105,7 @@ class CameraPubNode(Node):
         
         # 2. 降低分辨率以提高性能（2560x1440 太大，降到 1280x720）
         #    如果需要更高性能，可以降到 640x360
-        frame = cv2.resize(frame, (self.width, self.height))
+        frame = cv2.resize(frame, (self.width_height[0], self.width_height[1]))
         
         # 3. 计算时间戳（一次性计算）
         original_total_ns = int(self.camera_microtimestamp * 1000000)  # 毫秒转纳秒

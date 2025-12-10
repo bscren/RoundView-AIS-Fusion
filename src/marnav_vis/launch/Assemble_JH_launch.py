@@ -26,10 +26,15 @@ def generate_launch_description():
         default_value='720',
         description='Height of the published camera images'
     )
+    declare_width_height_arg = DeclareLaunchArgument(
+        'width_height',
+        default_value='[1280, 720]',
+        description='Width and height of the published camera images'
+    )
     
     declare_gnss_rate_arg = DeclareLaunchArgument(
         'gnss_publish_rate',
-        default_value='10.0',
+        default_value='5.0',
         description='Publishing frequency (Hz) for GNSS data'
     )
     
@@ -38,6 +43,55 @@ def generate_launch_description():
         default_value='/home/tl/RV/src/marnav_vis/clip-01/ais/',
         description='Folder path containing AIS CSV files'
     )
+
+    declare_ais_start_timestamp_arg = DeclareLaunchArgument(
+        'ais_start_timestamp',
+        default_value='1654315512000',
+        description='Start timestamp for AIS data publication'
+    )
+
+    declare_gnss_start_timestamp_arg = DeclareLaunchArgument(
+        'gnss_start_timestamp',
+        default_value='1654315512000',
+        description='Start timestamp for GNSS data publication'
+    )
+
+    declare_camera_start_timestamp_arg = DeclareLaunchArgument(
+        'camera_start_timestamp',
+        default_value='1654315512000',
+        description='Start timestamp for camera data publication'
+    )
+
+    declare_ais_csv_topic_arg = DeclareLaunchArgument(
+        'ais_csv_topic',
+        default_value='/ais_csv_topic',
+        description='Topic name for single AIS data publication'
+    )
+
+    declare_ais_batch_pub_topic_arg = DeclareLaunchArgument(
+        'ais_batch_pub_topic',
+        default_value='/ais_batch_topic_offline',
+        description='Topic name for batch AIS data publication'
+    )
+
+    declare_gnss_pub_topic_arg = DeclareLaunchArgument(
+        'gnss_pub_topic',
+        default_value='/gnss_pub_topic',
+        description='Topic name for GNSS data publication'
+    )
+
+    declare_fus_trajectory_topic_arg = DeclareLaunchArgument(
+        'fus_trajectory_topic',
+        default_value='/fus_trajectory_topic',
+        description='Topic name for fused trajectory data publication'
+    )
+
+    # camera_topics 不作为 LaunchArgument，直接在节点中配置
+    # declare_camera_topics_arg = DeclareLaunchArgument(
+    #     'camera_topics',
+    #     default_value=['/camera_image_topic_0', '/camera_image_topic_1', '/camera_image_topic_2'],
+    #     description='Topic names for camera data publication'
+    # )
 
     # 相机发布节点
     camera_pub_node = Node(
@@ -48,8 +102,9 @@ def generate_launch_description():
         parameters=[{
             'video_path': LaunchConfiguration('video_path'),
             'publish_fps': LaunchConfiguration('camera_publish_fps'),
-            'width': LaunchConfiguration('camera_width'),
-            'height': LaunchConfiguration('camera_height')
+            'width_height': LaunchConfiguration('width_height'),
+            'camera_start_timestamp': LaunchConfiguration('camera_start_timestamp'),
+            'camera_topics': ['/camera_image_topic_0', '/camera_image_topic_1', '/camera_image_topic_2']  # 直接定义数组
         }]
     )
 
@@ -60,7 +115,9 @@ def generate_launch_description():
         name='gnss_publisher_node',
         output='screen',
         parameters=[{
-            'publish_rate': LaunchConfiguration('gnss_publish_rate')
+            'gnss_start_timestamp': LaunchConfiguration('gnss_start_timestamp'),
+            'publish_rate': LaunchConfiguration('gnss_publish_rate'),
+            'gnss_pub_topic': LaunchConfiguration('gnss_pub_topic')
         }]
     )
 
@@ -71,7 +128,8 @@ def generate_launch_description():
         name='ais_csv_publisher_node',
         output='screen',
         parameters=[{
-            'ais_csv_folder': LaunchConfiguration('ais_csv_folder')
+            'ais_csv_folder': LaunchConfiguration('ais_csv_folder'),
+            'ais_csv_topic': LaunchConfiguration('ais_csv_topic')
         }]
     )
 
@@ -80,27 +138,49 @@ def generate_launch_description():
         package='marnav_vis',  # 替换为实际包名
         executable='ais_sorted_pub_node',  # 替换为setup.py中配置的可执行文件名
         name='ais_batch_publisher_node',
-        output='screen'
-        # 该节点无额外参数，无需配置parameters
+        output='screen',
+        parameters=[{
+            'ais_start_timestamp': LaunchConfiguration('ais_start_timestamp'),
+            'ais_csv_topic': LaunchConfiguration('ais_csv_topic'),
+            'ais_batch_pub_topic': LaunchConfiguration('ais_batch_pub_topic')
+        }]
     )
 
     # DeepSORVF_ros_v节点
     deep_sorvf_node = Node(
         package='marnav_vis',  # 替换为实际包名
         executable='DeepSORVF_JH',  # 替换为setup.py中配置的可执行文件名
-        name='ais_vis_node',
-        output='screen'
-        # 该节点无额外参数，无需配置parameters
+        name='ais_vis_node',    
+        output='screen',
+        parameters=[{
+        #     # 'width_height': LaunchConfiguration('width_height'),
+        #     'camera_topics': ['/camera_image_topic_0', '/camera_image_topic_1', '/camera_image_topic_2'],
+            'ais_batch_pub_topic': LaunchConfiguration('ais_batch_pub_topic'),
+        #     'gnss_pub_topic': LaunchConfiguration('gnss_pub_topic'),
+        #     'fus_trajectory_topic': LaunchConfiguration('fus_trajectory_topic'),
+        #     'input_fps': 15,
+        #     'output_fps': 10,
+        }]
     )
 
     # 组装启动描述
     return LaunchDescription([
         declare_video_path_arg,
         declare_camera_fps_arg,
-        declare_camera_width_arg,
-        declare_camera_height_arg,  
+        # declare_camera_width_arg,
+        # declare_camera_height_arg,  
+        declare_width_height_arg,
+        declare_camera_start_timestamp_arg,
+        # declare_camera_topics_arg,  # 已注释，直接在node中配置
+        declare_gnss_start_timestamp_arg,
         declare_gnss_rate_arg,
         declare_ais_folder_arg,
+        declare_ais_start_timestamp_arg,
+        declare_ais_batch_pub_topic_arg,
+        declare_ais_csv_topic_arg,
+        declare_gnss_pub_topic_arg,
+        declare_fus_trajectory_topic_arg,
+        
         camera_pub_node,
         gnss_pub_node,
         ais_csv_pub_node,

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-多相机-AIS-RTK数据集录制工具 - 主程序
+多相机-AIS-GNSS数据集录制工具 - 主程序
 整合所有模块，实现完整的数据采集流程
 """
 import os
@@ -19,7 +19,7 @@ import threading
 from config_manager import ConfigManager
 from ais_receiver import AISReceiver
 from camera_receiver import MultiCameraReceiver
-from rtk_receiver import RTKReceiver
+from gnss_receiver import GNSSReceiver
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +41,7 @@ class DatasetRecorder:
         # 各模块实例
         self.ais_receiver = None
         self.camera_manager = None
-        self.rtk_receiver = None
+        self.gnss_receiver = None
         
         # 数据保存路径
         self.dataset_root = None
@@ -52,7 +52,7 @@ class DatasetRecorder:
         self.start_time = None
         
         logger.info("="*60)
-        logger.info("多相机-AIS-RTK数据集录制工具")
+        logger.info("多相机-AIS-GNSS数据集录制工具")
         logger.info("="*60)
     
     def load_and_validate_config(self) -> bool:
@@ -129,24 +129,24 @@ class DatasetRecorder:
             logger.info(f"会话目录: {self.current_session_path}")
             
             # 创建子目录
-            rtk_path = self.current_session_path / 'rtk'
+            gnss_path = self.current_session_path / 'gnss'
             ais_path = self.current_session_path / 'ais'
             camera_path = self.current_session_path / 'camera'
             
-            rtk_path.mkdir(exist_ok=True)
+            gnss_path.mkdir(exist_ok=True)
             ais_path.mkdir(exist_ok=True)
             camera_path.mkdir(exist_ok=True)
             
-            # 初始化RTK接收器
-            if devices.get('rtk', {}).get('enabled', False):
-                logger.info("初始化RTK接收器...")
-                self.rtk_receiver = RTKReceiver(devices['rtk'], save_path=str(rtk_path))
-                if not self.rtk_receiver.start():
-                    logger.error("❌ RTK接收器启动失败")
+            # 初始化GNSS接收器
+            if devices.get('gnss', {}).get('enabled', False):
+                logger.info("初始化GNSS接收器...")
+                self.gnss_receiver = GNSSReceiver(devices['gnss'], save_path=str(gnss_path))
+                if not self.gnss_receiver.start():
+                    logger.error("❌ GNSS接收器启动失败")
                     return False
-                logger.info("✅ RTK接收器已启动")
+                logger.info("✅ GNSS接收器已启动")
             else:
-                logger.warning("⚠️  RTK未启用")
+                logger.warning("⚠️  GNSS未启用")
             
             # 初始化AIS接收器
             if devices.get('ais', {}).get('enabled', False):
@@ -194,11 +194,11 @@ class DatasetRecorder:
         logger.info("-"*60)
         
         try:
-            # 等待第一条RTK数据（最多等待10秒）
+            # 等待第一条GNSS数据（最多等待10秒）
             first_time = None
             for i in range(100):
-                if self.rtk_receiver and self.rtk_receiver.first_data_time:
-                    first_time = self.rtk_receiver.first_data_time
+                if self.gnss_receiver and self.gnss_receiver.first_data_time:
+                    first_time = self.gnss_receiver.first_data_time
                     break
                 elif self.ais_receiver and self.ais_receiver.first_data_time:
                     first_time = self.ais_receiver.first_data_time
@@ -240,8 +240,8 @@ class DatasetRecorder:
             if not self.camera_manager:
                 logger.warning("没有相机管理器，跳过等待")
                 # 如果没有相机，直接触发保存事件
-                if self.rtk_receiver:
-                    self.rtk_receiver.start_saving_event.set()
+                if self.gnss_receiver:
+                    self.gnss_receiver.start_saving_event.set()
                 if self.ais_receiver:
                     self.ais_receiver.start_saving_event.set()
                 return True
@@ -269,10 +269,10 @@ class DatasetRecorder:
                 if self.camera_manager.all_cameras_recording():
                     logger.info("✅ 所有相机已开始录制")
                     
-                    # 触发RTK和AIS开始保存
-                    if self.rtk_receiver:
-                        self.rtk_receiver.start_saving_event.set()
-                        logger.info("✅ 已触发RTK开始保存")
+                    # 触发GNSS和AIS开始保存
+                    if self.gnss_receiver:
+                        self.gnss_receiver.start_saving_event.set()
+                        logger.info("✅ 已触发GNSS开始保存")
                     
                     if self.ais_receiver:
                         self.ais_receiver.start_saving_event.set()
@@ -290,8 +290,8 @@ class DatasetRecorder:
             logger.warning(f"当前状态: {ready_count}/{total_count} 相机已就绪")
             
             # 即使超时，也触发保存事件
-            if self.rtk_receiver:
-                self.rtk_receiver.start_saving_event.set()
+            if self.gnss_receiver:
+                self.gnss_receiver.start_saving_event.set()
             if self.ais_receiver:
                 self.ais_receiver.start_saving_event.set()
             
@@ -319,7 +319,7 @@ class DatasetRecorder:
             self.running = True
             
             logger.info("✅ 数据录制已启动")
-            logger.info(f"   - RTK数据保存到: {self.current_session_path / 'rtk'}")
+            logger.info(f"   - GNSS数据保存到: {self.current_session_path / 'gnss'}")
             logger.info(f"   - AIS数据保存到: {self.current_session_path / 'ais'}")
             logger.info(f"   - 相机视频保存到: {self.current_session_path / 'camera'}")
             
@@ -338,13 +338,13 @@ class DatasetRecorder:
         print(f"运行状态 - {datetime.now().strftime('%H:%M:%S')}")
         print("="*60)
         
-        # RTK状态
-        if self.rtk_receiver:
-            rtk_stats = self.rtk_receiver.get_statistics()
-            print(f"RTK: 有效={rtk_stats['valid_data']}, "
-                  f"总接收={rtk_stats['total_received']}, "
-                  f"已保存={rtk_stats.get('saved_count', 0)}, "
-                  f"CSV文件={rtk_stats.get('csv_files', 0)}")
+        # GNSS状态
+        if self.gnss_receiver:
+            gnss_stats = self.gnss_receiver.get_statistics()
+            print(f"GNSS: 有效={gnss_stats['valid_data']}, "
+                  f"总接收={gnss_stats['total_received']}, "
+                  f"已保存={gnss_stats.get('saved_count', 0)}, "
+                  f"CSV文件={gnss_stats.get('csv_files', 0)}")
         
         # AIS状态
         if self.ais_receiver:
@@ -375,9 +375,9 @@ class DatasetRecorder:
         self.running = False
         
         # 停止所有接收器
-        if self.rtk_receiver:
-            logger.info("停止RTK接收...")
-            self.rtk_receiver.stop()
+        if self.gnss_receiver:
+            logger.info("停止GNSS接收...")
+            self.gnss_receiver.stop()
         
         if self.ais_receiver:
             logger.info("停止AIS接收...")
@@ -413,14 +413,14 @@ class DatasetRecorder:
             print(f"总时长: {duration:.1f}秒 ({duration/60:.1f}分钟)")
             print()
             
-            # RTK统计
-            if self.rtk_receiver:
-                rtk_stats = self.rtk_receiver.get_statistics()
-                print(f"RTK接收:")
-                print(f"  总接收: {rtk_stats['total_received']}条")
-                print(f"  有效数据: {rtk_stats['valid_data']}条")
-                print(f"  已保存: {rtk_stats.get('saved_count', 0)}条")
-                print(f"  CSV文件: {rtk_stats.get('csv_files', 0)}个")
+            # GNSS统计
+            if self.gnss_receiver:
+                gnss_stats = self.gnss_receiver.get_statistics()
+                print(f"GNSS接收:")
+                print(f"  总接收: {gnss_stats['total_received']}条")
+                print(f"  有效数据: {gnss_stats['valid_data']}条")
+                print(f"  已保存: {gnss_stats.get('saved_count', 0)}条")
+                print(f"  CSV文件: {gnss_stats.get('csv_files', 0)}个")
                 print()
             
             # AIS统计
@@ -453,7 +453,7 @@ class DatasetRecorder:
                 'start_time': self.start_time.isoformat() + 'Z' if self.start_time else None,
                 'end_time': end_time.isoformat() + 'Z',
                 'duration_seconds': duration,
-                'rtk_stats': self.rtk_receiver.get_statistics() if self.rtk_receiver else {},
+                'gnss_stats': self.gnss_receiver.get_statistics() if self.gnss_receiver else {},
                 'ais_stats': self.ais_receiver.get_statistics() if self.ais_receiver else {},
                 'camera_stats': self.camera_manager.get_all_statistics() if self.camera_manager else {}
             }
@@ -478,7 +478,7 @@ class DatasetRecorder:
         3. 初始化所有模块
         4. 等待首条数据并设置文件名
         5. 等待相机开始录制
-        6. 启动录制（RTK和AIS开始保存）
+        6. 启动录制（GNSS和AIS开始保存）
         7. 等待用户中断
         8. 停止录制并生成报告
         """
@@ -557,7 +557,7 @@ def setup_logging(log_level: str = "INFO"):
 def main():
     """主函数（CLI入口）"""
     parser = argparse.ArgumentParser(
-        description='多相机-AIS-RTK数据集录制工具',
+        description='多相机-AIS-GNSS数据集录制工具',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 使用示例:
