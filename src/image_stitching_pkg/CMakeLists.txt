@@ -16,6 +16,7 @@ endif()
 
 # 查找依赖包（ROS 2相关）
 find_package(ament_cmake REQUIRED)
+find_package(ament_index_cpp REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(image_transport REQUIRED)
@@ -145,14 +146,17 @@ ament_target_dependencies(stitch
 
 ament_target_dependencies(JH_rtsp
   rclcpp
+  ament_index_cpp
   sensor_msgs
   std_msgs
   image_transport
   cv_bridge
+  yaml-cpp
 )  # 补充闭合括号
 
 ament_target_dependencies(JH_ROS_stitch
   rclcpp
+  ament_index_cpp
   sensor_msgs
   std_msgs
   image_transport
@@ -161,6 +165,7 @@ ament_target_dependencies(JH_ROS_stitch
   mycustface
   marnav_interfaces
   nlohmann_json
+  yaml-cpp
 )
 
 
@@ -177,10 +182,12 @@ target_link_libraries(stitch
 
 target_link_libraries(JH_rtsp
   ${OpenCV_LIBRARIES}
+  yaml-cpp
 )  # 补充闭合括号
 
 target_link_libraries(JH_ROS_stitch
   ${OpenCV_LIBRARIES}
+  yaml-cpp
 )  # 补充闭合括号
 
 
@@ -198,6 +205,12 @@ install(TARGETS
 install(DIRECTORY
   launch/
   DESTINATION share/${PROJECT_NAME}/launch
+)
+
+# 安装config目录（存放配置文件）
+install(DIRECTORY
+  config/
+  DESTINATION share/${PROJECT_NAME}/config
 )
 
 # 测试配置（保持默认）

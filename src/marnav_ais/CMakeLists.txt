@@ -7,11 +7,13 @@ endif()
 
 # find dependencies
 find_package(ament_cmake REQUIRED)
+find_package(ament_index_cpp REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(GeographicLib REQUIRED)
 find_package(marnav_interfaces REQUIRED)
 find_package(Boost REQUIRED COMPONENTS system)
+find_package(yaml-cpp REQUIRED)
 # uncomment the following section in order to fill in
 # further dependencies manually.
 # find_package(<dependency> REQUIRED)
@@ -77,9 +79,11 @@ target_link_libraries(ais_parser_batch_pub_node
     rclcpp::rclcpp
     ${LIBSERIAL_LIBRARY}
     Boost::system
+    yaml-cpp
 )  
 ament_target_dependencies(ais_parser_batch_pub_node  
-    rclcpp  
+    rclcpp
+    ament_index_cpp
     std_msgs
     marnav_interfaces
 )
@@ -90,9 +94,11 @@ target_link_libraries(gnss_parser_pub_node
     rclcpp::rclcpp
     ${LIBSERIAL_LIBRARY}
     Boost::system
+    yaml-cpp
 )
 ament_target_dependencies(gnss_parser_pub_node
     rclcpp
+    ament_index_cpp
     marnav_interfaces
 )
 

@@ -9,25 +9,47 @@ import pandas as pd
 from marnav_interfaces.msg import Ais, AisBatch  # 导入原始AIS消息和自定义批量消息
 from builtin_interfaces.msg import Time
 import time
+from marnav_vis.config_loader import ConfigLoader
 
 class AisBatchPublisher(Node):
     def __init__(self):
         super().__init__('ais_batch_publisher_node')
-        self.declare_parameters(
-            namespace='',
-            parameters=[
-                # ========= 后需要改为动态传参，目前暂时是手动定义的参数 =========
-                ('ais_start_timestamp', 1654315512000),  # AIS数据集起始时间戳，单位：毫秒
-                ('ais_csv_topic', '/ais_csv_topic'),  # 原始单条AIS数据话题
-                ('ais_batch_pub_topic', '/ais_batch_topic_offline'),  # 批量发布的话题名
-                # ================================================
-            ]
-        )
-        # 创建后续实时更新的时间戳
-        self.ais_batch_microtimestamp = self.get_parameter('ais_start_timestamp').value
-        self.ais_csv_topic = self.get_parameter('ais_csv_topic').value
-        self.ais_batch_pub_topic = self.get_parameter('ais_batch_pub_topic').value
-        self.get_logger().info(f"AIS Batch Publisher Node initialized with start timestamp: {self.ais_batch_microtimestamp}")
+        
+        # 声明配置文件参数
+        self.declare_parameter('config_file', '')
+        config_file = self.get_parameter('config_file').get_parameter_value().string_value
+        
+        # 如果未指定配置文件，使用默认路径
+        if not config_file:
+            try:
+                config_file = ConfigLoader.find_config_file('marnav_vis', 'track_offline_config.yaml')
+                self.get_logger().info(f"未指定配置文件，使用默认路径: {config_file}")
+            except Exception as e:
+                self.get_logger().error(f"查找默认配置文件失败: {e}")
+                raise
+        
+        # 加载配置
+        try:
+            config_loader = ConfigLoader(config_file)
+            ais_config = config_loader.get_ais_config()
+        except Exception as e:
+            self.get_logger().fatal(f"加载配置文件失败: {e}")
+            raise
+        
+        # 从配置中读取参数
+        self.ais_batch_microtimestamp = ais_config.get('ais_start_timestamp', 0)
+        self.ais_csv_topic = ais_config.get('ais_csv_topic', '/ais_csv_topic')
+        self.ais_batch_pub_topic = ais_config.get('ais_batch_pub_topic', '/ais_batch_topic_offline')
+        
+        self.get_logger().info("="*60)
+        self.get_logger().info("📦 AIS批量发布节点配置")
+        self.get_logger().info("="*60)
+        self.get_logger().info(f"配置文件: {config_file}")
+        self.get_logger().info(f"起始时间戳: {self.ais_batch_microtimestamp} ms")
+        self.get_logger().info(f"订阅话题: {self.ais_csv_topic}")
+        self.get_logger().info(f"发布话题: {self.ais_batch_pub_topic}")
+        self.get_logger().info(f"发布频率: 1 Hz (固定)")
+        self.get_logger().info("="*60)
 
 
         

@@ -6,6 +6,7 @@ from marnav_interfaces.msg import Ais
 from builtin_interfaces.msg import Time
 import os, time, glob
 from datetime import datetime,timezone,timedelta
+from marnav_vis.config_loader import ConfigLoader
 
 # AIS数据实时接收-发布脚本 2022_06_04_12_07_37
 # 功能: 接收AIS数据并发布，AIS数据从指定文件夹路径读取，文件夹中存在多个AIS数据的csv文件，
@@ -16,20 +17,43 @@ class AisPubNode(Node):
     def __init__(self):
         super().__init__('ais_csv_publisher_node')
 
-        # 声明参数
-        self.declare_parameters(
-            namespace='',
-            parameters=[
-                ('ais_csv_folder', '/home/tl/RV/src/marnav_vis/clip-01/ais/'),
-                ('ais_csv_topic', '/ais_csv_topic')
-            ]
-        )
-        # 不用声明发布频率参数，固定为1Hz
-
-        # 读取AIS数据文件夹路径
-        self.ais_csv_folder = self.get_parameter('ais_csv_folder').get_parameter_value().string_value
-        self.ais_csv_topic = self.get_parameter('ais_csv_topic').get_parameter_value().string_value
-        self.get_logger().info(f"AIS CSV folder set to: {self.ais_csv_folder}")
+        # 声明配置文件参数
+        self.declare_parameter('config_file', '')
+        config_file = self.get_parameter('config_file').get_parameter_value().string_value
+        
+        # 如果未指定配置文件，使用默认路径
+        if not config_file:
+            try:
+                config_file = ConfigLoader.find_config_file('marnav_vis', 'track_offline_config.yaml')
+                self.get_logger().info(f"未指定配置文件，使用默认路径: {config_file}")
+            except Exception as e:
+                self.get_logger().error(f"查找默认配置文件失败: {e}")
+                raise
+        
+        # 加载配置
+        try:
+            config_loader = ConfigLoader(config_file)
+            ais_config = config_loader.get_ais_config()
+        except Exception as e:
+            self.get_logger().fatal(f"加载配置文件失败: {e}")
+            raise
+        
+        # 从配置中读取参数
+        self.ais_csv_folder = ais_config.get('ais_csv_folder', '')
+        self.ais_csv_topic = ais_config.get('ais_csv_topic', '/ais_csv_topic')
+        
+        if not self.ais_csv_folder:
+            self.get_logger().fatal("配置文件中未定义ais_csv_folder")
+            raise ValueError("未定义AIS CSV文件夹路径")
+        
+        self.get_logger().info("="*60)
+        self.get_logger().info("📡 AIS CSV发布节点配置")
+        self.get_logger().info("="*60)
+        self.get_logger().info(f"配置文件: {config_file}")
+        self.get_logger().info(f"AIS CSV文件夹: {self.ais_csv_folder}")
+        self.get_logger().info(f"发布话题: {self.ais_csv_topic}")
+        self.get_logger().info(f"发布频率: 1 Hz (固定)")
+        self.get_logger().info("="*60)
 
 
         # 创建AIS消息发布者

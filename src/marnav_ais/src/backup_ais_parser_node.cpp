@@ -1,3 +1,5 @@
+// 该版本:
+// 基础版本，只用于参考解码流程
 #include "rclcpp/rclcpp.hpp"
 #include <libserial/SerialPort.h>
 #include <boost/asio.hpp>

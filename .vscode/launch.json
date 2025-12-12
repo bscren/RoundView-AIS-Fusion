@@ -1,21 +1,105 @@
-// PYTHON 调试配置
 {
     "version": "0.2.0",
     "configurations": [
+        // ============ C++ 调试配置 ============
+        {
+            "name": "ROS2 C++: Debug AIS Parser V2",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/install/marnav_ais/lib/marnav_ais/ais_parser_node_v2",
+            "args": [
+                "--ros-args",
+                "-p", "comm_type:=udp",
+                "-p", "udp_port:=1800",
+                "-p", "log_raw_data:=true"
+            ],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [
+                {
+                    "name": "AMENT_PREFIX_PATH",
+                    "value": "${workspaceFolder}/install:${env:AMENT_PREFIX_PATH}"
+                },
+                {
+                    "name": "LD_LIBRARY_PATH",
+                    "value": "${workspaceFolder}/install/marnav_ais/lib:${workspaceFolder}/install/marnav_interfaces/lib:${env:LD_LIBRARY_PATH}"
+                },
+                {
+                    "name": "ROS_DOMAIN_ID",
+                    "value": "${env:ROS_DOMAIN_ID}"
+                }
+            ],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                },
+                {
+                    "description": "Set Disassembly Flavor to Intel",
+                    "text": "-gdb-set disassembly-flavor intel",
+                    "ignoreFailures": true
+                }
+            ],
+            "miDebuggerPath": "/usr/bin/gdb",
+            "logging": {
+                "moduleLoad": false,
+                "trace": false,
+                "engineLogging": false
+            }
+        },
+        {
+            "name": "ROS2 C++: Debug AIS Parser V2 (Serial)",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/install/marnav_ais/lib/marnav_ais/ais_parser_node_v2",
+            "args": [
+                "--ros-args",
+                "-p", "comm_type:=serial",
+                "-p", "serial_port:=/dev/ttyS3",
+                "-p", "baud_rate:=38400"
+            ],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [
+                {
+                    "name": "AMENT_PREFIX_PATH",
+                    "value": "${workspaceFolder}/install:${env:AMENT_PREFIX_PATH}"
+                },
+                {
+                    "name": "LD_LIBRARY_PATH",
+                    "value": "${workspaceFolder}/install/marnav_ais/lib:${workspaceFolder}/install/marnav_interfaces/lib:${env:LD_LIBRARY_PATH}"
+                }
+            ],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ],
+            "miDebuggerPath": "/usr/bin/gdb"
+        },
+        
+        // ============ Python 调试配置 ============
         {
             "name": "ROS2: Assemble Launch",
             "type": "ros2",
             "request": "launch",
             "target": "/home/tl/RV/src/marnav_vis/launch/Assemble_JH_launch.py",
-            "justMyCode": false,           // ← 关键：允许步入所有代码
-            "subProcess": true  // 在子进程中运行
+            "justMyCode": false,
+            "subProcess": true
         },
         {
             "name": "ROS2 Python Launch Debug",
             "type": "python",
             "request": "launch",
             "program": "${workspaceFolder}/src/marnav_vis/marnav_vis/DeepSORVF_ros_v2.py",
-            "justMyCode": false,           // ← 关键：允许步入所有代码
+            "justMyCode": false,
             "console": "integratedTerminal"
         },
         {
@@ -24,67 +108,11 @@
             "request": "launch",
             "program": "${workspaceFolder}/src/marnav_vis/marnav_vis/DeepSORVF_ros_v1.py",
             "console": "integratedTerminal",
-            "justMyCode": false,           // ← 关键：允许步入所有代码
+            "justMyCode": false,
             "cwd": "${workspaceFolder}",
             "env": {
                 "PYTHONPATH": "${workspaceFolder}/src/marnav_vis:${env:PYTHONPATH}"
             }
-        },
-        {
-            "name": "ROS2 Python Launch Debug",
-            "type": "python",
-            "request": "launch",
-            "program": "${workspaceFolder}/src/marnav_vis/marnav_vis/DeepSORVF_ros_v2.py",
-            "console": "integratedTerminal",
-            "justMyCode": false            // ← 也为这个配置添加
         }
     ]
 }
-// C++ 调试配置
-// {
-//     "version": "0.2.0",
-//     "configurations": [
-//         {
-//             "name": "ROS2 Launch Debug",
-//             "type": "cppdbg",
-//             "request": "launch",
-//             "program": "${workspaceFolder}/install/image_stitching_pkg/lib/image_stitching_pkg/JH_stitch",
-//             "args": [
-//                 // "/rtsp_image_0",
-//                 // "/rtsp_image_1",
-//                 // "/rtsp_image_2"
-//             ],
-//             "stopAtEntry": false,
-//             "cwd": "${workspaceFolder}",
-//             "environment": [
-//                 {
-//                     "name": "ROS_PACKAGE_PATH",
-//                     "value": "${workspaceFolder}/src:${env:ROS_PACKAGE_PATH}"
-//                 },
-//                 {
-//                     "name": "PYTHONPATH",
-//                     "value": "${workspaceFolder}/install/image_stitching_pkg/lib/python3.10/site-packages:${env:PYTHONPATH}"
-//                 },
-//                 {
-//                     "name": "LD_LIBRARY_PATH",
-//                     "value": "${workspaceFolder}/install/image_stitching_pkg/lib:${env:LD_LIBRARY_PATH}"
-//                 }
-//             ],
-//             "externalConsole": false,
-//             "MIMode": "gdb",
-//             "setupCommands": [
-//                 {
-//                     "description": "Enable pretty-printing for gdb",
-//                     "text": "-enable-pretty-printing",
-//                     "ignoreFailures": true
-//                 }
-//             ],
-//             "preLaunchTask": "colcon build",  // 调试前自动编译
-//             "miDebuggerPath": "/usr/bin/gdb",
-//             "logging": {
-//                 "moduleLoad": false,
-//                 "trace": true
-//             }
-//         }
-//     ]
-// }

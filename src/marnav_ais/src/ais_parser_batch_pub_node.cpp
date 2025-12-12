@@ -31,6 +31,8 @@
 #include "std_msgs/msg/string.hpp"
 #include "marnav_interfaces/msg/ais.hpp"
 #include "marnav_interfaces/msg/ais_batch.hpp"
+#include <yaml-cpp/yaml.h>
+#include <ament_index_cpp/get_package_share_directory.hpp>
 
 using namespace std::chrono_literals;
 using namespace LibSerial;
@@ -245,41 +247,98 @@ public:
     AISBatchParserNode() 
         : Node("ais_batch_parser"), 
           comm_interface_(nullptr), 
-          running_(false), 
-          log_file_(nullptr) {
+          running_(false) {
         
-        // 声明配置参数
-        declare_parameter<std::string>("comm_type", "udp");
-        declare_parameter<std::string>("serial_port", "/dev/ttyS3");
-        declare_parameter<int>("baud_rate", 38400);
-        declare_parameter<std::string>("tcp_ip", "127.0.0.1");
-        declare_parameter<int>("tcp_port", 5000);
-        declare_parameter<std::string>("udp_ip", "0.0.0.0");
-        declare_parameter<int>("udp_port", 1800);
-        declare_parameter<std::string>("log_directory", "/home/tl/RV/ais_logs");
-        declare_parameter<std::string>("frame_id", "ais");
-        declare_parameter<bool>("log_raw_data", false);
-        declare_parameter<std::string>("ais_batch_pub_topic", "/ais_batch_topic_offline");
-        declare_parameter<std::string>("nmea_pub_topic", "/nmea_pub_topic");
-
-        // 读取参数
-        ais_batch_pub_topic_ = get_parameter("ais_batch_pub_topic").as_string();
-        nmea_pub_topic_ = get_parameter("nmea_pub_topic").as_string();
-        // ================================ 参数赋值 ================================
+        // 获取配置文件路径参数
+        declare_parameter<std::string>("config_file", "");
+        std::string config_file_path = get_parameter("config_file").as_string();
+        
+        // 如果未指定配置文件，使用默认路径
+        if (config_file_path.empty()) {
+            try {
+                std::string package_path = ament_index_cpp::get_package_share_directory("marnav_vis");
+                config_file_path = package_path + "/config/track_realtime_config.yaml";
+                RCLCPP_INFO(get_logger(), "未指定配置文件，使用默认路径: %s", config_file_path.c_str());
+            } catch (const std::exception& e) {
+                RCLCPP_FATAL(get_logger(), "查找默认配置文件失败: %s", e.what());
+                rclcpp::shutdown();
+                return;
+            }
+        }
+        
+        // 检查配置文件是否存在
+        std::ifstream file_check(config_file_path);
+        if (!file_check.good()) {
+            RCLCPP_FATAL(get_logger(), "配置文件不存在: %s", config_file_path.c_str());
+            rclcpp::shutdown();
+            return;
+        }
+        file_check.close();
+        
+        // 从YAML文件加载配置（默认值）
+        std::string comm_type = "udp";
+        std::string serial_port = "/dev/ttyS3";
+        int baud_rate = 38400;
+        std::string tcp_ip = "127.0.0.1";
+        int tcp_port = 5000;
+        std::string udp_ip = "0.0.0.0";
+        int udp_port = 1800;
+        ais_batch_pub_topic_ = "/ais_batch_topic_realtime";
+        
+        try {
+            YAML::Node config = YAML::LoadFile(config_file_path);
+            
+            if (!config["ais"]) {
+                RCLCPP_WARN(get_logger(), "YAML配置文件中未找到'ais'节点，使用默认值");
+            } else {
+                const YAML::Node& ais_config = config["ais"];
+                
+                // 读取通信类型
+                if (ais_config["comm_type"]) {
+                    comm_type = ais_config["comm_type"].as<std::string>();
+                }
+                
+                // 读取UDP参数
+                if (ais_config["udp_para"]) {
+                    const YAML::Node& udp_para = ais_config["udp_para"];
+                    if (udp_para["udp_ip"]) udp_ip = udp_para["udp_ip"].as<std::string>();
+                    if (udp_para["udp_port"]) udp_port = udp_para["udp_port"].as<int>();
+                }
+                
+                // 读取串口参数
+                if (ais_config["serial_port_para"]) {
+                    const YAML::Node& serial_para = ais_config["serial_port_para"];
+                    if (serial_para["serial_port"]) serial_port = serial_para["serial_port"].as<std::string>();
+                    if (serial_para["baud_rate"]) baud_rate = serial_para["baud_rate"].as<int>();
+                }
+                
+                // 读取TCP参数
+                if (ais_config["tcp_para"]) {
+                    const YAML::Node& tcp_para = ais_config["tcp_para"];
+                    if (tcp_para["tcp_ip"]) tcp_ip = tcp_para["tcp_ip"].as<std::string>();
+                    if (tcp_para["tcp_port"]) tcp_port = tcp_para["tcp_port"].as<int>();
+                }
+                
+                // 读取发布话题
+                if (ais_config["ais_batch_pub_topic"]) {
+                    ais_batch_pub_topic_ = ais_config["ais_batch_pub_topic"].as<std::string>();
+                }
+                
+                RCLCPP_INFO(get_logger(), "成功从YAML文件加载AIS配置: %s", config_file_path.c_str());
+            }
+        } catch (const YAML::Exception& e) {
+            RCLCPP_ERROR(get_logger(), "解析YAML配置文件失败: %s，使用默认值", e.what());
+        } catch (const std::exception& e) {
+            RCLCPP_ERROR(get_logger(), "读取配置文件时发生错误: %s，使用默认值", e.what());
+        }
 
         // 初始化AIS批量消息发布者
         ais_batch_publisher_ = create_publisher<marnav_interfaces::msg::AisBatch>(
             ais_batch_pub_topic_, 10);
-        
-        // 初始化NMEA原始数据发布者（可选）
-        nmea_publisher_ = create_publisher<std_msgs::msg::String>(
-            nmea_pub_topic_, 10);
+        RCLCPP_INFO(get_logger(), "发布AIS批量话题: %s", ais_batch_pub_topic_.c_str());
 
-        // 初始化日志系统
-        init_logging();
-
-        // 初始化通信接口
-        init_comm_interface();
+        // 初始化通信接口（使用从YAML读取的参数）
+        init_comm_interface(comm_type, serial_port, baud_rate, tcp_ip, tcp_port, udp_ip, udp_port);
 
         // 启动通信线程
         if (comm_interface_ && comm_interface_->connect()) {
@@ -308,10 +367,6 @@ public:
         if (comm_interface_) {
             comm_interface_->disconnect();
         }
-        if (log_file_) {
-            log_file_->close();
-            delete log_file_;
-        }
         RCLCPP_INFO(get_logger(), "AIS批量发布节点已关闭");
     }
 
@@ -333,23 +388,6 @@ private:
         return std::string(start, end + 1);
     }
 
-    /**
-     * @brief 发布NMEA原始数据
-     */
-    void publish_nmea(const std::string &data) {
-        if (!nmea_publisher_ || data.empty()) {
-            return;
-        }
-
-        try {
-            std_msgs::msg::String msg;
-            msg.data = data;
-            nmea_publisher_->publish(msg);
-            RCLCPP_DEBUG(get_logger(), "已发布NMEA数据: %s", data.c_str());
-        } catch (const std::exception& e) {
-            RCLCPP_ERROR(get_logger(), "发布NMEA数据失败: %s", e.what());
-        }
-    }
 
     /**
      * @brief 解析AIVDM报文
@@ -595,96 +633,35 @@ private:
                     batch_msg.batch_time.nanosec);
     }
 
-    /**
-     * @brief 初始化日志系统
-     */
-    void init_logging() {
-        std::string log_dir = get_parameter("log_directory").as_string();
-        if (log_dir.empty()) {
-            RCLCPP_INFO(get_logger(), "未设置日志目录，不记录日志");
-            return;
-        }
-
-        try {
-            fs::create_directories(log_dir);
-
-            auto now = std::chrono::system_clock::now();
-            auto now_utc = std::chrono::system_clock::to_time_t(now);
-            std::tm tm = *std::gmtime(&now_utc);
-            
-            std::stringstream ss;
-            ss << "ais_batch_" << std::put_time(&tm, "%Y%m%d_%H%M%S") << ".log";
-            std::string log_path = fs::path(log_dir) / ss.str();
-
-            log_file_ = new std::ofstream(log_path);
-            if (log_file_->is_open()) {
-                RCLCPP_INFO(get_logger(), "日志文件已创建: %s", log_path.c_str());
-            } else {
-                RCLCPP_ERROR(get_logger(), "无法打开日志文件: %s", log_path.c_str());
-                delete log_file_;
-                log_file_ = nullptr;
-            }
-        } catch (const std::exception& e) {
-            RCLCPP_ERROR(get_logger(), "日志初始化失败: %s", e.what());
-        }
-    }
 
     /**
-     * @brief 初始化通信接口
+     * @brief 初始化通信接口（使用传入的参数）
      */
-    void init_comm_interface() {
-        std::string comm_type = get_parameter("comm_type").as_string();
-        
+    void init_comm_interface(const std::string& comm_type,
+                            const std::string& serial_port,
+                            int baud_rate,
+                            const std::string& tcp_ip,
+                            int tcp_port,
+                            const std::string& udp_ip,
+                            int udp_port) {
         if (comm_type == "serial") {
-            std::string port = get_parameter("serial_port").as_string();
-            int baud = get_parameter("baud_rate").as_int();
-            comm_interface_ = std::make_unique<SerialComm>(port, baud);
+            comm_interface_ = std::make_unique<SerialComm>(serial_port, baud_rate);
             RCLCPP_INFO(get_logger(), "选择串口通信: %s, 波特率: %d", 
-                        port.c_str(), baud);
+                        serial_port.c_str(), baud_rate);
         }
         else if (comm_type == "tcp") {
-            std::string ip = get_parameter("tcp_ip").as_string();
-            int port = get_parameter("tcp_port").as_int();
-            comm_interface_ = std::make_unique<TcpComm>(ip, port);
-            RCLCPP_INFO(get_logger(), "选择TCP通信: %s:%d", ip.c_str(), port);
+            comm_interface_ = std::make_unique<TcpComm>(tcp_ip, tcp_port);
+            RCLCPP_INFO(get_logger(), "选择TCP通信: %s:%d", tcp_ip.c_str(), tcp_port);
         } 
         else if (comm_type == "udp") {
-            std::string ip = get_parameter("udp_ip").as_string();
-            int port = get_parameter("udp_port").as_int();
-            comm_interface_ = std::make_unique<UdpComm>(ip, port);
-            RCLCPP_INFO(get_logger(), "选择UDP通信: %s:%d", ip.c_str(), port);
+            comm_interface_ = std::make_unique<UdpComm>(udp_ip, udp_port);
+            RCLCPP_INFO(get_logger(), "选择UDP通信: %s:%d", udp_ip.c_str(), udp_port);
         } 
         else {
             RCLCPP_ERROR(get_logger(), "不支持的通信类型: %s", comm_type.c_str());
         }
     }
 
-    /**
-     * @brief 写入日志
-     */
-    void write_log(const std::string& data) {
-        if (!log_file_ || !log_file_->is_open()) return;
-
-        std::lock_guard<std::mutex> lock(log_mutex_);
-        try {
-            auto now = std::chrono::system_clock::now();
-            auto now_utc = std::chrono::system_clock::to_time_t(now);
-            std::tm tm = *std::gmtime(&now_utc);
-
-            rclcpp::Time ros_timestamp = this->get_clock()->now();
-            builtin_interfaces::msg::Time stamp = ros_timestamp;
-            
-            std::stringstream ss;
-            ss << std::put_time(&tm, "%Y-%m-%dT%H:%M:%S") << ","
-               << stamp.sec << "." << std::setw(9) << std::setfill('0') 
-               << stamp.nanosec << "," << data << "\n";
-
-            *log_file_ << ss.str();
-            log_file_->flush();
-        } catch (const std::exception& e) {
-            RCLCPP_WARN(get_logger(), "日志写入失败: %s", e.what());
-        }
-    }
 
     /**
      * @brief 通信循环（独立线程）
@@ -702,16 +679,9 @@ private:
 
             std::string data = comm_interface_->read_data();
             if (!data.empty()) {
-                // 发布NMEA原始数据（可选）
-                publish_nmea(data);
                 
                 // 解析AIVDM数据
                 parse_aivdm(data);
-                
-                // 写入日志
-                if (get_parameter("log_raw_data").as_bool()) {
-                    write_log(data);
-                }
             }
 
             std::this_thread::sleep_for(10ms);
@@ -725,11 +695,9 @@ private:
 
     // 发布者
     rclcpp::Publisher<marnav_interfaces::msg::AisBatch>::SharedPtr ais_batch_publisher_;
-    rclcpp::Publisher<std_msgs::msg::String>::SharedPtr nmea_publisher_;
 
     // 话题名（由参数读取）
     std::string ais_batch_pub_topic_;
-    std::string nmea_pub_topic_;
 
     // 定时器
     rclcpp::TimerBase::SharedPtr batch_timer_;
@@ -742,9 +710,6 @@ private:
     std::vector<marnav_interfaces::msg::Ais> current_batch_;
     std::mutex batch_mutex_;
 
-    // 日志
-    std::ofstream* log_file_;
-    std::mutex log_mutex_;
 };
 
 int main(int argc, char* argv[]) {

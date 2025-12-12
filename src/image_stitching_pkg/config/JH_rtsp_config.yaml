@@ -1,0 +1,35 @@
+# RTSP相机配置配置文件
+# 此配置文件用于配置RTSP视频流的地址和ROS话题名称
+# 可以根据实际需要增加或减少相机配置项
+
+input_frame_rate: 20 # 相机设置的输入帧率
+target_frame_rate: 20 # 目标帧率，测试结果为与相机设置的输入帧率一致表现最好
+
+# 发布的相机配置列表
+cameras:
+  # 相机0配置
+  - camera_id: 0
+    rtsp_url: "rtsp://admin:juhai001@192.168.1.1:554/Streaming/Channels/2"
+    topic_name: "/rtsp_image_0"
+    description: "相机0 - 子码流示例"
+    
+  # 相机1配置
+  - camera_id: 1
+    rtsp_url: "rtsp://admin:juhai002@192.168.1.2:554/Streaming/Channels/2"
+    topic_name: "/rtsp_image_1"
+    description: "相机1 - 子码流示例"
+    
+  # 相机2配置
+  - camera_id: 2
+    rtsp_url: "rtsp://admin:juhai003@192.168.1.3:554/Streaming/Channels/2"
+    topic_name: "/rtsp_image_2"
+    description: "相机2 - 子码流示例"
+
+# 示例：如果只需要两个相机，可以注释掉或删除相机2的配置
+# 示例：如果需要更多相机，按照上面的格式继续添加即可
+
+# RTSP配置说明：
+# 主码流格式：rtsp://用户名:密码@IP地址:端口/Streaming/Channels/1
+# 子码流格式：rtsp://用户名:密码@IP地址:端口/Streaming/Channels/2
+# 或者：rtsp://用户名:密码@IP地址:端口/h264/ch1/sub/av_stream
+

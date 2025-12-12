@@ -27,17 +27,19 @@ setup(
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
-        (os.path.join('share', package_name, 'launch'), glob('launch/*.py')),  # 添加这一行
-        (f'share/{package_name}/config', ['config/camera_0_param_location.txt',
-                                         'config/camera_1_param_location.txt',
-                                         'config/camera_2_param_location.txt']),# f 的意思是格式化字符串
+        (os.path.join('share', package_name, 'launch'), glob('launch/*.py')),
+        (f'share/{package_name}/config', [
+            'config/camera_0_param_location.txt',
+            'config/camera_1_param_location.txt',
+            'config/camera_2_param_location.txt',
+            'config/track_offline_config.yaml',  # 添加YAML配置文件
+            'config/track_realtime_config.yaml'  # 添加YAML配置文件
+        ]),
         (f'share/{package_name}/detection_yolox/model_data', 
-                                ['detection_yolox/model_data/ship_classes.txt', 'detection_yolox/model_data/yolo_anchors.txt'])
-        # (f'share/{package_name}/weights', 
-        #                         ['weights/yolov3_deep_sort.pth']),
-
+            ['detection_yolox/model_data/ship_classes.txt', 
+             'detection_yolox/model_data/yolo_anchors.txt'])
     ],
-    install_requires=['setuptools', 'easydict==1.11', 'fastdtw'],
+    install_requires=['setuptools', 'easydict==1.11', 'fastdtw', 'pyyaml'],
     zip_safe=True,
     maintainer='tl',
     maintainer_email='tl@todo.todo',

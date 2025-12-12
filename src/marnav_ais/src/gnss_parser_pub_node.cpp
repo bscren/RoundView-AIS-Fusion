@@ -14,8 +14,11 @@
 #include <vector>
 #include <chrono>
 #include <sstream>
+#include <fstream>
 
 #include "marnav_interfaces/msg/gnss.hpp"
+#include <yaml-cpp/yaml.h>
+#include <ament_index_cpp/get_package_share_directory.hpp>
 
 using namespace std::chrono_literals;
 using boost::asio::ip::tcp;
@@ -210,18 +213,101 @@ public:
   GNSSParserNode()
       : Node("gnss_parser_node"), running_(false) {
 
-    declare_parameter<std::string>("comm_type", "udp");
-    declare_parameter<std::string>("serial_port", "/dev/ttyS3");
-    declare_parameter<int>("baud_rate", 115200);
-    declare_parameter<std::string>("tcp_ip", "127.0.0.1");
-    declare_parameter<int>("tcp_port", 8010);
-    declare_parameter<std::string>("udp_ip", "0.0.0.0");
-    declare_parameter<int>("udp_port", 8010);
-    declare_parameter<double>("publish_hz", 5.0); // 默认 5Hz
+    // 获取配置文件路径参数
+    declare_parameter<std::string>("config_file", "");
+    std::string config_file_path = get_parameter("config_file").as_string();
+    
+    // 如果未指定配置文件，使用默认路径
+    if (config_file_path.empty()) {
+      try {
+        std::string package_path = ament_index_cpp::get_package_share_directory("marnav_vis");
+        config_file_path = package_path + "/config/track_realtime_config.yaml";
+        RCLCPP_INFO(get_logger(), "未指定配置文件，使用默认路径: %s", config_file_path.c_str());
+      } catch (const std::exception& e) {
+        RCLCPP_FATAL(get_logger(), "查找默认配置文件失败: %s", e.what());
+        rclcpp::shutdown();
+        return;
+      }
+    }
+    
+    // 检查配置文件是否存在
+    std::ifstream file_check(config_file_path);
+    if (!file_check.good()) {
+      RCLCPP_FATAL(get_logger(), "配置文件不存在: %s", config_file_path.c_str());
+      rclcpp::shutdown();
+      return;
+    }
+    file_check.close();
+    
+    // 从YAML文件加载配置
+    std::string comm_type = "udp";
+    std::string serial_port = "/dev/ttyS3";
+    int baud_rate = 115200;
+    std::string tcp_ip = "127.0.0.1";
+    int tcp_port = 8010;
+    std::string udp_ip = "0.0.0.0";
+    int udp_port = 8010;
+    double publish_hz = 5.0;
+    std::string gnss_pub_topic = "gnss_data";
+    
+    try {
+      YAML::Node config = YAML::LoadFile(config_file_path);
+      
+      if (!config["gnss"]) {
+        RCLCPP_WARN(get_logger(), "YAML配置文件中未找到'gnss'节点，使用默认值");
+      } else {
+        const YAML::Node& gnss_config = config["gnss"];
+        
+        // 读取通信类型
+        if (gnss_config["comm_type"]) {
+          comm_type = gnss_config["comm_type"].as<std::string>();
+        }
+        
+        // 读取UDP参数
+        if (gnss_config["udp_para"]) {
+          const YAML::Node& udp_para = gnss_config["udp_para"];
+          if (udp_para["udp_ip"]) udp_ip = udp_para["udp_ip"].as<std::string>();
+          if (udp_para["udp_port"]) udp_port = udp_para["udp_port"].as<int>();
+        }
+        
+        // 读取串口参数
+        if (gnss_config["serial_port_para"]) {
+          const YAML::Node& serial_para = gnss_config["serial_port_para"];
+          if (serial_para["serial_port"]) serial_port = serial_para["serial_port"].as<std::string>();
+          if (serial_para["baud_rate"]) baud_rate = serial_para["baud_rate"].as<int>();
+        }
+        
+        // 读取TCP参数
+        if (gnss_config["tcp_para"]) {
+          const YAML::Node& tcp_para = gnss_config["tcp_para"];
+          if (tcp_para["tcp_ip"]) tcp_ip = tcp_para["tcp_ip"].as<std::string>();
+          if (tcp_para["tcp_port"]) tcp_port = tcp_para["tcp_port"].as<int>();
+        }
+        
+        // 读取发布频率
+        if (gnss_config["gnss_publish_rate"]) {
+          publish_hz = gnss_config["gnss_publish_rate"].as<double>();
+        }
+        
+        // 读取发布话题
+        if (gnss_config["gnss_pub_topic"]) {
+          gnss_pub_topic = gnss_config["gnss_pub_topic"].as<std::string>();
+        }
+        
+        RCLCPP_INFO(get_logger(), "成功从YAML文件加载GNSS配置: %s", config_file_path.c_str());
+      }
+    } catch (const YAML::Exception& e) {
+      RCLCPP_ERROR(get_logger(), "解析YAML配置文件失败: %s，使用默认值", e.what());
+    } catch (const std::exception& e) {
+      RCLCPP_ERROR(get_logger(), "读取配置文件时发生错误: %s，使用默认值", e.what());
+    }
 
-    gnss_pub_ = create_publisher<marnav_interfaces::msg::Gnss>("gnss_data", 10);
+    // 创建发布者（使用配置文件中的话题名）
+    gnss_pub_ = create_publisher<marnav_interfaces::msg::Gnss>(gnss_pub_topic, 10);
+    RCLCPP_INFO(get_logger(), "发布GNSS话题: %s", gnss_pub_topic.c_str());
 
-    init_comm_interface();
+    // 初始化通信接口（使用从YAML读取的参数）
+    init_comm_interface(comm_type, serial_port, baud_rate, tcp_ip, tcp_port, udp_ip, udp_port);
 
     if (comm_interface_ && comm_interface_->connect()) {
       running_ = true;
@@ -233,15 +319,15 @@ public:
       return;
     }
 
-    double hz = get_parameter("publish_hz").as_double();
-    if (hz <= 0.0) {
-      hz = 5.0;
+    // 设置发布频率
+    if (publish_hz <= 0.0) {
+      publish_hz = 5.0;
     }
-    auto period = std::chrono::duration<double>(1.0 / hz);
+    auto period = std::chrono::duration<double>(1.0 / publish_hz);
     timer_ = create_wall_timer(std::chrono::duration_cast<std::chrono::nanoseconds>(period),
                                std::bind(&GNSSParserNode::publish_timer, this));
 
-    RCLCPP_INFO(get_logger(), "GNSS 解析节点启动，发布频率: %.2f Hz", hz);
+    RCLCPP_INFO(get_logger(), "GNSS 解析节点启动，发布频率: %.2f Hz", publish_hz);
   }
 
   ~GNSSParserNode() override {
@@ -256,25 +342,24 @@ public:
   }
 
 private:
-  // 初始化通信接口
-  void init_comm_interface() {
-    std::string comm_type = get_parameter("comm_type").as_string();
+  // 初始化通信接口（使用传入的参数）
+  void init_comm_interface(const std::string& comm_type,
+                          const std::string& serial_port,
+                          int baud_rate,
+                          const std::string& tcp_ip,
+                          int tcp_port,
+                          const std::string& udp_ip,
+                          int udp_port) {
     if (comm_type == "serial") {
-      auto port = get_parameter("serial_port").as_string();
-      int baud = get_parameter("baud_rate").as_int();
-      comm_interface_ = std::make_unique<SerialComm>(port, baud);
-      RCLCPP_INFO(get_logger(), "选择串口通信: %s, 波特率: %d", port.c_str(), baud);
+      comm_interface_ = std::make_unique<SerialComm>(serial_port, baud_rate);
+      RCLCPP_INFO(get_logger(), "选择串口通信: %s, 波特率: %d", serial_port.c_str(), baud_rate);
     } else if (comm_type == "tcp") {
-      auto ip = get_parameter("tcp_ip").as_string();
-      int port = get_parameter("tcp_port").as_int();
-      comm_interface_ = std::make_unique<TcpComm>(ip, port);
-      RCLCPP_INFO(get_logger(), "选择 TCP 通信: %s:%d", ip.c_str(), port);
+      comm_interface_ = std::make_unique<TcpComm>(tcp_ip, tcp_port);
+      RCLCPP_INFO(get_logger(), "选择 TCP 通信: %s:%d", tcp_ip.c_str(), tcp_port);
     } else {
       // 默认 UDP
-      auto ip = get_parameter("udp_ip").as_string();
-      int port = get_parameter("udp_port").as_int();
-      comm_interface_ = std::make_unique<UdpComm>(ip, port);
-      RCLCPP_INFO(get_logger(), "选择 UDP 通信: %s:%d", ip.c_str(), port);
+      comm_interface_ = std::make_unique<UdpComm>(udp_ip, udp_port);
+      RCLCPP_INFO(get_logger(), "选择 UDP 通信: %s:%d", udp_ip.c_str(), udp_port);
     }
   }
 

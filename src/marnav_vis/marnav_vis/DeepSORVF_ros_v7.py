@@ -32,6 +32,7 @@ from utils_JH.AIS_utils import AISPRO
 from utils_JH.FUS_utils import FUSPRO
 from utils_JH.gen_result import gen_result
 from utils_JH.draw import DRAW
+from marnav_vis.config_loader import ConfigLoader
 
 # 由v4的多线程改为v5的多进程，每个进程独立处理一帧: 包含AIS, VIS, FUS, DRAW
 
@@ -156,86 +157,127 @@ def multi_proc_worker(input_queue, output_queue, im_shape, t, max_dis, skip_inte
 
 
 
-# 作为客户端请求相机参数
-def get_camera_params_client(node, camera_name):
-    # node.get_logger().info(f'请求相机参数: {camera_name}')
-    client = node.create_client(GetCameraParams, '/get_camera_params')
+# 作为客户端请求相机参数（带重试机制）
+def get_camera_params_client(node, camera_name, max_retries=20, retry_interval=2.0):
+    """
+    请求相机参数，如果首次处理尚未完成则重试
+    
+    参数:
+        node: ROS 2节点
+        camera_name: 相机名称
+        max_retries: 最大重试次数
+        retry_interval: 重试间隔（秒）
+    """
+    client = node.create_client(GetCameraParams, '/get_camera_params_service')
+    
+    # 等待服务可用
     timeout_sec = 10.0
     if not client.wait_for_service(timeout_sec=timeout_sec):
-        node.get_logger().error(f'已经过了{timeout_sec}秒，服务 /get_camera_params 不可用')
+        node.get_logger().error(f'已经过了{timeout_sec}秒，服务 /get_camera_params_service 不可用')
         return None
-    request = GetCameraParams.Request()
-    request.camera_name = camera_name
-    future = client.call_async(request)
-    rclpy.spin_until_future_complete(node, future)
-    if future.result() is not None and future.result().success:
-        resp = future.result()
-        # node.get_logger().info(
-        #     f"相机参数: focal={resp.focal}, aspect={resp.aspect}, ppx={resp.ppx}, ppy={resp.ppy}\n"
-        #     f"R={list(resp.rotate_matrix)}, t={list(resp.transport_matrix)}, K={list(resp.k_matrix)}"
-        # )
-        node.get_logger().info(f'获取相机参数成功: {camera_name}')
-        return resp
-    else:
-        node.get_logger().error('获取相机参数失败')
-        return None
+    
+    # 重试机制：等待首次处理完成
+    for attempt in range(max_retries):
+        request = GetCameraParams.Request()
+        request.camera_name = camera_name
+        future = client.call_async(request)
+        rclpy.spin_until_future_complete(node, future, timeout_sec=5.0)
+        
+        if future.result() is not None:
+            resp = future.result()
+            if resp.success:
+                node.get_logger().info(f'✅ 获取相机参数成功: {camera_name} (尝试 {attempt + 1}/{max_retries})')
+                return resp
+            else:
+                # 首次处理可能尚未完成，等待后重试
+                if attempt < max_retries - 1:
+                    node.get_logger().warn(
+                        f'⏳ 获取相机 {camera_name} 参数失败 (尝试 {attempt + 1}/{max_retries})，'
+                        f'可能首次处理尚未完成，等待 {retry_interval} 秒后重试...'
+                    )
+                    time.sleep(retry_interval)
+                else:
+                    node.get_logger().error(
+                        f'❌ 获取相机 {camera_name} 的参数失败，已重试 {max_retries} 次。'
+                        f'请检查图像拼接节点是否已收到图像并完成首次处理。'
+                    )
+        else:
+            node.get_logger().warn(f'服务调用超时 (尝试 {attempt + 1}/{max_retries})')
+            if attempt < max_retries - 1:
+                time.sleep(retry_interval)
+    
+    return None
 
 
 
 class AisVisNode(Node):
-    def __init__(self, camera_para):
+    def __init__(self, camera_para, dataset_mode):
         super().__init__('ais_vis_node')
 
-        self.declare_parameters(
-            namespace='',
-            parameters=[
-        # =================================================== DEBUG ===================================================
-                ('width_height', [2560, 1440]),
-                ('camera_topics', ['/camera_image_topic_0', '/camera_image_topic_1', '/camera_image_topic_2']),
-                # ('camera_topics', ['/rtsp_image_0', '/rtsp_image_1', '/rtsp_image_2']),
-        # =================================================== DEBUG ===================================================
-                ('ais_batch_pub_topic', '/ais_batch_topic'),
-                ('gnss_pub_topic', '/gnss_pub_topic'),
-                ('fus_trajectory_topic', '/fus_trajectory_topic'),
-                ('input_fps', 15),
-                ('output_fps', 10),
-                ('anti', 1),
-                ('anti_rate', 0),
-                ('sync_queue_size', 10),
-                ('sync_slop', 0.1),
-                ('skip_interval', 1000) # 单位ms，表示每隔skip_interval ms处理一帧
-            ]
-        )
-        self.camera_para = camera_para
-        self.im_shape = tuple(map(int, self.get_parameter('width_height').get_parameter_value().integer_array_value))
-        self.camera_topics = self.get_parameter('camera_topics').get_parameter_value().string_array_value
+        # 声明配置文件参数
+        self.declare_parameter('config_file', '')
+        config_file = self.get_parameter('config_file').get_parameter_value().string_value
         
-
-        # =================================================== DEBUG ===================================================
-        # 相机topic到标准名称的映射（与C++拼接节点保持一致）
-        self.camera_name_mapping = {
-            '/camera_image_topic_0': 'rtsp_image_0',
-            '/camera_image_topic_1': 'rtsp_image_1',
-            '/camera_image_topic_2': 'rtsp_image_2',
-            '/rtsp_image_0': 'rtsp_image_0',
-            '/rtsp_image_1': 'rtsp_image_1',
-            '/rtsp_image_2': 'rtsp_image_2'
-        }
-        # =================================================== DEBUG ===================================================
-
-
-        self.ais_batch_pub_topic = self.get_parameter('ais_batch_pub_topic').get_parameter_value().string_value
-        self.fus_trajectory_topic = self.get_parameter('fus_trajectory_topic').get_parameter_value().string_value
-        self.gnss_pub_topic = self.get_parameter('gnss_pub_topic').get_parameter_value().string_value
-        self.input_fps = self.get_parameter('input_fps').get_parameter_value().integer_value
+        # 如果未指定配置文件，使用默认路径
+        if not config_file:
+            try:
+                config_file = ConfigLoader.find_config_file('marnav_vis', 'track_offline_config.yaml')
+                self.get_logger().info(f"未指定配置文件，使用默认路径: {config_file}")
+            except Exception as e:
+                self.get_logger().error(f"查找默认配置文件失败: {e}")
+                raise
+        
+        # 加载配置
+        try:
+            config_loader = ConfigLoader(config_file)
+            camera_config = config_loader.get_camera_config()
+            ais_config = config_loader.get_ais_config()
+            gnss_config = config_loader.get_gnss_config()
+            deepsorvf_config = config_loader.get_deepsorvf_config()
+        except Exception as e:
+            self.get_logger().fatal(f"加载配置文件失败: {e}")
+            raise
+        
+        # 从配置中读取参数
+        self.dataset_mode = dataset_mode
+        self.camera_para = camera_para
+        self.im_shape = tuple(camera_config.get('width_height', [2560, 1440]))
+        self.camera_topics = [cam['topic_name'] for cam in camera_config.get('cameras', [])]
+        
+        # 构建相机topic到标准名称的映射（与C++拼接节点保持一致）
+        self.camera_name_mapping = {}
+        for cam in camera_config.get('cameras', []):
+            topic_name = cam.get('topic_name', '')
+            camera_name = cam.get('camera_name', '')
+            self.camera_name_mapping[topic_name] = camera_name
+        
+        self.ais_batch_pub_topic = ais_config.get('ais_batch_pub_topic', '/ais_batch_topic')
+        self.fus_trajectory_topic = deepsorvf_config.get('fus_trajectory_topic', '/fus_trajectory_topic')
+        self.gnss_pub_topic = gnss_config.get('gnss_pub_topic', '/gnss_pub_topic')
+        
+        self.input_fps = deepsorvf_config.get('input_fps', 20)
         self.t = int(1000 / self.input_fps)
-        self.output_fps = self.get_parameter('output_fps').get_parameter_value().integer_value
-
-        self.anti = self.get_parameter('anti').get_parameter_value().integer_value
-        self.anti_rate = self.get_parameter('anti_rate').get_parameter_value().integer_value
-        self.sync_queue_size = self.get_parameter('sync_queue_size').get_parameter_value().integer_value
-        self.sync_slop = self.get_parameter('sync_slop').get_parameter_value().double_value
-        self.skip_interval = self.get_parameter('skip_interval').get_parameter_value().integer_value
+        self.output_fps = deepsorvf_config.get('output_fps', 10)
+        
+        self.anti = deepsorvf_config.get('anti', 1)
+        self.anti_rate = deepsorvf_config.get('anti_rate', 0)
+        self.sync_queue_size = deepsorvf_config.get('sync_queue_size', 10)
+        self.sync_slop = deepsorvf_config.get('sync_slop', 0.1)
+        self.skip_interval = deepsorvf_config.get('skip_interval', 1000)
+        
+        # 打印配置信息
+        self.get_logger().info("="*60)
+        self.get_logger().info("🚢 船只跟踪节点配置")
+        self.get_logger().info("="*60)
+        self.get_logger().info(f"配置文件: {config_file}")
+        self.get_logger().info(f"图像尺寸: {self.im_shape[0]}x{self.im_shape[1]}")
+        self.get_logger().info(f"相机数量: {len(self.camera_topics)}")
+        for i, (topic, name) in enumerate(self.camera_name_mapping.items()):
+            self.get_logger().info(f"  相机映射关系{i}: {topic} -> {name}")
+        self.get_logger().info(f"输入/输出FPS: {self.input_fps}/{self.output_fps}")
+        self.get_logger().info(f"处理间隔: {self.skip_interval} ms")
+        self.get_logger().info(f"同步队列: {self.sync_queue_size}, 同步误差: {self.sync_slop}s")
+        self.get_logger().info("="*60)
 
         self.bridge = CvBridge()
         self.aisbatch_cache = pd.DataFrame(columns=['ID', 'mmsi', 'timestamp', 'lat', 'lon', 'sog', 'cog', 'heading', 'status', 'type'])
@@ -244,6 +286,9 @@ class AisVisNode(Node):
         self.camera_pos_para = {}
         self.max_dis = min(self.im_shape) // 2
         self.name = 'ROS version 2 demo'
+        
+        # 存储GNSS配置（从配置文件读取，用于初始化）
+        self.gnss_config = gnss_config
 
         self.num_cameras = len(self.camera_topics)
         self.bin_inf = [pd.DataFrame(columns=['ID', 'mmsi', 'timestamp', 'match']) for _ in range(self.num_cameras)]
@@ -282,7 +327,7 @@ class AisVisNode(Node):
 
         # 订阅相机图像和对应的同步器
         self.camera_subscribers = []
-        for topic in self.get_parameter('camera_topics').get_parameter_value().string_array_value:
+        for topic in self.camera_topics:
             sub = Subscriber(self, Image, topic, qos_profile=qos_profile)
             self.camera_subscribers.append(sub)
         self.ts = ApproximateTimeSynchronizer(
@@ -383,52 +428,60 @@ class AisVisNode(Node):
 
 
     def gnss_callback(self, msg: Gnss):
-        # self.get_logger().info("收到GNSS数据")
+        """GNSS回调函数：更新相机位置参数"""
         self.gnss_cache = msg
-        # 更新相机位置信息，以相机camera_image_topic_1为正前方
-        # 因此这里假设camera_image_topic_1是中间相机，camera_image_topic_0和camera_image_topic_2的水平朝向分别调整-60和+60度
-        for idx, cam_topic in enumerate(self.camera_topics):
-            # 先获取各自的K矩阵
-            K = self.camera_para[idx]['K']
-            horizontal_orientation = (msg.horizontal_orientation + (idx - 1) * 60) % 360  # 中间相机不变，左右相机调整±60度，若超出360度范围，进行归一化
-            # self.camera_pos_para[idx] = {
-            #     'longitude': msg.longitude,
-            #     'latitude': msg.latitude,
-            #     'horizontal_orientation': horizontal_orientation, # 注意，每个相机的水平朝向都不同，因此不能直接用msg.horizontal_orientation
-            #     'vertical_orientation': msg.vertical_orientation,
-            #     'camera_height': msg.camera_height,
-            
-            #     'fov_hor': self.camera_para[idx]['fov_hor'],
-            #     'fov_ver': self.camera_para[idx]['fov_ver'],
-            #     'fx': K[0,0],
-            #     'fy': K[1,1],
-            #     'u0': K[0,2],
-            #     'v0': K[1,2],
-            #     # 'focal': self.camera_para[idx]['focal'], # 以下这些没有用处
-            #     # 'aspect': self.camera_para[idx]['aspect'],
-            #     # 'ppx': self.camera_para[idx]['ppx'],
-            #     # 'ppy': self.camera_para[idx]['ppy'],
-            #     # 'R': self.camera_para[idx]['R'],
-            #     # 't': self.camera_para[idx]['t'],
-            #     # 'K': self.camera_para[idx]['K']
-            # }
-    # ================================== DEBUG ==================================
-            # Lon	Lat	Horizontal Orientation	Vertical Orientation	Camera Height	Horizontal FoV	Vertical FoV	fx	fy	u0	v0
-            # 114.32583	30.60139	7	-1	20	55	30.94	2391.26	2446.89	1305.04	855.214
-            self.camera_pos_para[idx] = {
-                "longitude": 114.32583,
-                "latitude": 30.60139,
-                "horizontal_orientation": 7,
-                "vertical_orientation": -1,
-                "camera_height": 20,
-                'fov_hor': 55,
-                'fov_ver': 30.94,
-                'fx': 2391.26,
-                'fy': 2446.89,
-                'u0': 1305.04,
-                'v0': 855.214,
-            }
-    # ================================== DEBUG ==================================
+        
+        # 更新相机位置信息，以中间相机为正前方
+        # 左右相机的水平朝向分别调整-60和+60度
+        for idx, topic in enumerate(self.camera_topics):
+            # 计算水平朝向（中间相机不变，左右相机调整±60度）
+            if self.dataset_mode == True: # 数据集模式下，使用数据集里的相机内参初始化
+                self.camera_pos_para[idx] = {
+                    # "longitude": msg.longitude,
+                    # "latitude": msg.latitude,
+                    # "horizontal_orientation": msg.horizontal_orientation,  # 每个相机的水平朝向由yaml文件配置
+                    # "vertical_orientation": msg.vertical_orientation,
+                    # "camera_height": msg.camera_height,
+
+                    # 'fov_hor': self.camera_para[idx]['fov_hor'], # 数据集模式下这参数是固定的
+                    # 'fov_ver': self.camera_para[idx]['fov_ver'],
+                    # 'fx': self.camera_para[idx]['fx'],
+                    # 'fy': self.camera_para[idx]['fy'],
+                    # 'u0': self.camera_para[idx]['u0'],
+                    # 'v0': self.camera_para[idx]['v0'],
+# [114.32722222222222, 30.60027777777778, 352.0, -4.0, 20.0, 55.0, 30.94, 2391.26, 2446.89, 1305.04, 855.214]
+
+                    "longitude": 114.32722222222222,
+                    "latitude": 30.60027777777778,
+                    "horizontal_orientation": 352.0,  # 每个相机的水平朝向由yaml文件配置
+                    "vertical_orientation": -4.0,
+                    "camera_height": 20.0,
+
+                    'fov_hor': 55.0,
+                    'fov_ver': 30.94,
+                    'fx': 2391.26,
+                    'fy': 2446.89,
+                    'u0': 1305.04,
+                    'v0': 855.214,
+                }
+            elif self.dataset_mode == False: # 实时模式下，获取实际的相机内参
+                horizontal_orientation = (msg.horizontal_orientation + (idx - 1) * 60) % 360
+                # 获取相机的K矩阵
+                K = self.camera_para[idx]['K']
+                # 使用实时GNSS数据更新相机位置参数
+                self.camera_pos_para[idx] = {
+                    "longitude": msg.longitude,
+                    "latitude": msg.latitude,
+                    "horizontal_orientation": horizontal_orientation,  # 每个相机的水平朝向不同
+                    "vertical_orientation": msg.vertical_orientation,
+                    "camera_height": msg.camera_height,
+                    'fov_hor': self.camera_para[idx]['fov_hor'],
+                    'fov_ver': self.camera_para[idx]['fov_ver'],
+                    'fx': K[0,0],
+                    'fy': K[1,1],
+                    'u0': K[0,2],
+                    'v0': K[1,2],
+                }
 
     def refresh_window_callback(self):
         # 回收多进程输出结果
@@ -594,27 +647,88 @@ def main(args=None):
     except RuntimeError:
         pass
     rclpy.init(args=args)
-    # 先用临时node获取所有相机参数
-    tmp_node = rclpy.create_node('tmp_param_client')
+    
+    # 加载配置文件获取相机名称列表
+    tmp_node = rclpy.create_node('tmp_config_loader')
+    tmp_node.declare_parameter('config_file', '')
+    config_file = tmp_node.get_parameter('config_file').get_parameter_value().string_value
+    
+    if not config_file:
+        try:
+            config_file = ConfigLoader.find_config_file('marnav_vis', 'track_offline_config.yaml')
+            tmp_node.get_logger().info(f"未指定配置文件，使用默认路径: {config_file}")
+        except Exception as e:
+            tmp_node.get_logger().error(f"查找默认配置文件失败: {e}")
+            raise
+    
+    # 从配置文件读取相机名称
+    config_loader = ConfigLoader(config_file)
+    camera_config = config_loader.get_camera_config()
+    camera_names = [cam['camera_name'] for cam in camera_config.get('cameras', [])]
+    
+    if not camera_names:
+        tmp_node.get_logger().fatal("配置文件中未定义相机")
+        tmp_node.destroy_node()
+        rclpy.shutdown()
+        return
+    
+    tmp_node.get_logger().info(f"从配置文件加载了 {len(camera_names)} 个相机配置")
+    
+    # 获取所有相机参数
     camera_para = {}
-    # 这里假设参数声明和读取与AisVisNode一致
-    camera_topics = tmp_node.declare_parameter('camera_topics', ['rtsp_image_0', 'rtsp_image_1', 'rtsp_image_2']).get_parameter_value().string_array_value
-    for idx, cam_name in enumerate(camera_topics):
-        resp = get_camera_params_client(tmp_node, cam_name)
-        if resp:
-            camera_para[idx] = {
-                'fov_hor': resp.fov_hor,
-                'fov_ver': resp.fov_ver,
-                'focal': resp.focal,
-                'aspect': resp.aspect,
-                'ppx': resp.ppx,
-                'ppy': resp.ppy,
-                'R': list(resp.rotate_matrix),
-                't': list(resp.transport_matrix),
-                'K': list(resp.k_matrix)
-            }
+    # 實時模式下，需要获取实际的相机内参
+    dataset_mode = camera_config.get('dataset_mode')
+    if dataset_mode == False:  
+        for idx, cam_name in enumerate(camera_names):
+            resp = get_camera_params_client(tmp_node, cam_name)
+            if resp:
+                # 将固定长度数组转换为列表格式用于后续处理
+                R_matrix = list(resp.rotate_matrix)
+                t_matrix = list(resp.transport_matrix)
+                K_matrix = list(resp.k_matrix)
+                
+                # 将K矩阵转换为numpy数组格式（3x3）
+                import numpy as np
+                K_array = np.array(K_matrix).reshape(3, 3)
+                
+                camera_para[idx] = {
+                    'fov_hor': resp.fov_hor,
+                    'fov_ver': resp.fov_ver,
+                    'focal': resp.focal,
+                    'aspect': resp.aspect,
+                    'ppx': resp.ppx,
+                    'ppy': resp.ppy,
+                    'R': R_matrix,
+                    't': t_matrix,
+                    'K': K_array
+                }
+                tmp_node.get_logger().info(f"✅ 成功获取相机 {cam_name} 的参数")
+            else:
+                tmp_node.get_logger().error(f"❌ 获取相机 {cam_name} 的参数失败")
+    # 离线数据集模式下，使用数据集里的相机内参初始化
+    elif dataset_mode == True:
+        camera_intrinsic_list = camera_config.get('camera_intrinsic_para', [])
+        if not isinstance(camera_intrinsic_list, list):
+            tmp_node.get_logger().fatal(f"❌ camera_intrinsic_para 必须是列表格式，当前类型: {type(camera_intrinsic_list)}")
+            tmp_node.destroy_node()
+            rclpy.shutdown()
+            return
+        
+        if len(camera_intrinsic_list) < len(camera_names):
+            tmp_node.get_logger().fatal(
+                f"❌ camera_intrinsic_para 列表长度 ({len(camera_intrinsic_list)}) "
+                f"小于相机数量 ({len(camera_names)})。请在配置文件中为每个相机添加内参。"
+            )
+            tmp_node.destroy_node()
+            rclpy.shutdown()
+            return
+        
+        for idx, cam_name in enumerate(camera_names):
+            camera_para[idx] = camera_intrinsic_list[idx]
+            tmp_node.get_logger().info(f"✅ 使用数据集里的相机 {cam_name} 的参数")
+
     tmp_node.destroy_node()
-    node = AisVisNode(camera_para)
+    node = AisVisNode(camera_para, dataset_mode)
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:

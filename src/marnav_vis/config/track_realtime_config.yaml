@@ -1,0 +1,67 @@
+# 船只轨迹跟踪的配置文件
+# 配置说明：请根据实际设备参数修改以下配置
+
+camera:
+  dataset_mode: False # 不是数据集模式，而是实时模式，需要获取实际的相机内参
+  camera_publish_fps: 25
+  width_height: [1280, 720]  # 使用数组格式便于ROS2传递，這個尺寸要和當前的相機內參一致，否則AIS無法正常融合
+  cameras: # 相机配置列表（支持动态增减相机数量）
+    - camera_name: "camera_0"           # 相机名称（用于映射）
+      topic_name: "/camera_image_topic_0"   # 相机0的话题名
+      camera_index: 0                       # 相机索引
+    - camera_name: "camera_1"           # 相机名称（用于映射）
+      topic_name: "/camera_image_topic_1"   # 相机1的话题名
+      camera_index: 1                       # 相机索引
+    - camera_name: "camera_2"           # 相机名称（用于映射）
+      topic_name: "/camera_image_topic_2"   # 相机2的话题名 camera_image_topic_2
+      camera_index: 2                       # 相机索引
+      
+gnss:
+  gnss_publish_rate: 5.0
+  gnss_pub_topic: "/gnss_pub_topic"
+  gnss_yaw_bias: 90 # 单位度，表示GNSS的yaw角相对主相机朝向的偏差
+  gnss_pitch_bias: 0 # 单位度，表示GNSS的pitch角相对于相机朝向的偏差
+  comm_type: "udp" # 串口通信: udp,tcp,serial
+  udp_para:
+    udp_ip: "0.0.0.0"
+    udp_port: 8010
+  serial_port_para:
+    serial_port: "/dev/ttyS3"
+    baud_rate: 115200
+    character_size: 8
+    parity: "N"
+    stop_bits: 1
+    flow_control: "NONE"
+  tcp_para:
+    tcp_ip: "127.0.0.1"
+    tcp_port: 5000
+
+
+ais:
+  ais_batch_pub_topic: "/ais_batch_topic_realtime"
+  comm_type: "serial"  # 串口通信: udp,tcp,serial
+  udp_para:
+    udp_ip: "0.0.0.0"
+    udp_port: 1800
+  serial_port_para:
+    serial_port: "/dev/ttyS3"
+    baud_rate: 38400
+    character_size: 8
+    parity: "N"
+    stop_bits: 1
+    flow_control: "NONE"
+  tcp_para:
+    tcp_ip: "127.0.0.1"
+    tcp_port: 5000
+
+    
+DeepSORVF:
+  fus_trajectory_topic: "/fus_trajectory_topic"
+  get_camera_params_service: "/get_camera_params_service"
+  input_fps: 20 # 进程刷新频率
+  output_fps: 10 # 当前跟踪结果的显示频率
+  anti: 1 # 是否进行抗遮挡处理
+  anti_rate: 0 # 启用抗遮挡处理的阈值
+  sync_queue_size: 10 # 同步队列大小
+  sync_slop: 0.1 # 同步时间误差
+  skip_interval: 1000 # 单位ms，表示在各个相机对应的跟踪进程中，每隔skip_interval ms处理一帧

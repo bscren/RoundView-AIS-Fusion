@@ -400,13 +400,10 @@ cv::Mat JHStitcher::processSubsequentGroupImpl
     // cout << "图像扭曲耗时: " << duration_time_warp.count() << " seconds." << endl;
 
     // 写入时加独占锁（阻塞所有读和写）
-    // 优化：缩短锁持有时间，仅在复制图像时加锁
-    {
-        std::unique_lock<std::shared_mutex> lock(rw_mutex_);
-        for (size_t i = 0; i < images_warp.size(); ++i) {
-            images_warp[i].copyTo(latest_warp_images_32F[i]);
-        }
-    } // 锁在这里释放
+    std::unique_lock<std::shared_mutex> lock(rw_mutex_);
+    for (size_t i = 0; i < images_warp.size(); ++i) {
+        images_warp[i].copyTo(latest_warp_images_32F[i]);
+    }
 
     // 图像融合
     cv::Ptr<Blender> blender = Blender::createDefault(Blender::NO, false);
@@ -452,14 +449,11 @@ void JHStitcher::detectStitchLine()
 {
     std::vector<cv::UMat> images;
     try {
-        // 优化：缩短锁持有时间，仅在复制图像时加锁
-        {
-            std::shared_lock<std::shared_mutex> lock(rw_mutex_);
-            //latest_warp_images_32F是一个全局变量，存储了最新的变形图像
-            images.push_back(latest_warp_images_32F[0].clone());
-            images.push_back(latest_warp_images_32F[1].clone());
-            images.push_back(latest_warp_images_32F[2].clone());
-        } // 锁在这里释放，后续处理不占用锁
+        std::shared_lock<std::shared_mutex> lock(rw_mutex_);
+        //latest_warp_images_32F是一个全局变量，存储了最新的变形图像
+        images.push_back(latest_warp_images_32F[0].clone());
+        images.push_back(latest_warp_images_32F[1].clone());
+        images.push_back(latest_warp_images_32F[2].clone());
     } catch (const std::exception& e) {
         // cout<<"读取错误: " << e.what()<<endl;
         return;
@@ -504,7 +498,7 @@ void JHStitcher::CalibTrajInPano(
     // 0. 清空之前的轨迹框（避免累积旧数据）
     trajectory_boxes_.clear();
     
-    // cout << "CalibTrajInPano 开始处理轨迹框" << endl;
+    cout << "CalibTrajInPano 开始处理轨迹框" << endl;
 
     // 1. 计算全局ROI（与filtBoxes中相同的逻辑）
     Rect dst_roi = Rect(data.corners[0], data.sizes[0]);
@@ -527,8 +521,8 @@ void JHStitcher::CalibTrajInPano(
         // 拷贝队列以便遍历（因为参数是const引用）
         std::queue<VisiableTra> single_cam_visiable_tra_queue = latest_visiable_tra_cache_[cam_idx];
         
-        // cout << "相机 " << cam_name << " (索引 " << cam_idx << ") 的轨迹数量: " 
-            //  << single_cam_visiable_tra_queue.size() << endl;
+        cout << "相机 " << cam_name << " (索引 " << cam_idx << ") 的轨迹数量: " 
+             << single_cam_visiable_tra_queue.size() << endl;
 
         // 3. 遍历该相机的所有轨迹消息
         while (!single_cam_visiable_tra_queue.empty()) {
@@ -555,9 +549,7 @@ void JHStitcher::CalibTrajInPano(
                 cvRound((four_corners_warp[1].x - dst_roi.x) * scale_),
                 cvRound((four_corners_warp[1].y - dst_roi.y) * scale_)
             );
-            
-            // cout << "top_left = " << top_left << ", bottom_right = " << bottom_right << endl;
-            // cout << "four_corners_warp[0] = " << four_corners_warp[0] << ", four_corners_warp[1] = " << four_corners_warp[1] << endl;
+
             // 7. 确保检测框坐标非负且有效
             top_left.x = std::max(0, top_left.x);
             top_left.y = std::max(0, top_left.y);
@@ -648,7 +640,7 @@ void JHStitcher::CalibTrajInPano(
         }
     }
 
-    // cout << "CalibTrajInPano 完成，共处理 " << trajectory_boxes_.size() << " 个轨迹框" << endl;
+    cout << "CalibTrajInPano 完成，共处理 " << trajectory_boxes_.size() << " 个轨迹框" << endl;
 }
 // 其他辅助函数的实现...
 

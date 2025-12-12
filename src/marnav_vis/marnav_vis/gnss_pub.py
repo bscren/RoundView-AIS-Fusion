@@ -15,42 +15,68 @@ from rclpy.node import Node
 import random
 from marnav_interfaces.msg import Gnss  # 导入自定义消息
 from builtin_interfaces.msg import Time
+from marnav_vis.config_loader import ConfigLoader
 
 class GnssPublisher(Node):
     def __init__(self):
         super().__init__('gnss_publisher_node')
         
-        # 1. 声明参数：发布帧率（默认5Hz）
-        self.declare_parameters(
-            namespace='',
-            parameters=[
-                ('publish_rate', 5.0),
-                ('gnss_pub_topic', '/gnss_pub_topic')
-            ]
-        )  # 单位：Hz
-        self.publish_rate = self.get_parameter('publish_rate').get_parameter_value().double_value
-        self.gnss_pub_topic = self.get_parameter('gnss_pub_topic').get_parameter_value().string_value
+        # 声明配置文件参数
+        self.declare_parameter('config_file', '')
+        config_file = self.get_parameter('config_file').get_parameter_value().string_value
+        
+        # 如果未指定配置文件，使用默认路径
+        if not config_file:
+            try:
+                config_file = ConfigLoader.find_config_file('marnav_vis', 'track_offline_config.yaml')
+                self.get_logger().info(f"未指定配置文件，使用默认路径: {config_file}")
+            except Exception as e:
+                self.get_logger().error(f"查找默认配置文件失败: {e}")
+                raise
+        
+        # 加载配置
+        try:
+            config_loader = ConfigLoader(config_file)
+            gnss_config = config_loader.get_gnss_config()
+        except Exception as e:
+            self.get_logger().fatal(f"加载配置文件失败: {e}")
+            raise
+        
+        # 从配置中读取参数
+        self.publish_rate = gnss_config.get('gnss_publish_rate', 5.0)
+        self.gnss_pub_topic = gnss_config.get('gnss_pub_topic', '/gnss_pub_topic')
         self.timer_period = 1.0 / self.publish_rate  # 定时器周期（秒）
         
-        # 2. 创建发布者
-        self.publisher_ = self.create_publisher(
-            Gnss,
-            self.gnss_pub_topic,  # 发布话题名称
-            10  # 队列大小
-        )
-        
-        # 3. 初始化相机参数（基于示例值，可添加微小扰动模拟实时数据）
+        # 读取GNSS位置参数
+        camera_gnss_para = gnss_config.get('camera_gnss_para', {})
         self.base_params = {
-            'lon': 114.32583,
-            'lat': 30.60139,
-            'horizontal_orientation': 352.0,
-            'vertical_orientation': -4.0,
-            'camera_height': 20.0
+            'lon': camera_gnss_para.get('lon', 114.32583),
+            'lat': camera_gnss_para.get('lat', 30.60139),
+            'horizontal_orientation': camera_gnss_para.get('horizontal_orientation', 352.0),
+            'vertical_orientation': camera_gnss_para.get('vertical_orientation', -4.0),
+            'camera_height': camera_gnss_para.get('camera_height', 20.0)
         }
         
-        # 4. 创建定时器，按指定帧率发布数据
+        # 创建发布者
+        self.publisher_ = self.create_publisher(
+            Gnss,
+            self.gnss_pub_topic,
+            10
+        )
+        
+        # 创建定时器
         self.timer = self.create_timer(self.timer_period, self.timer_callback)
-        self.get_logger().info(f"GNSS Camera Publisher started. Publish rate: {self.publish_rate} Hz")
+        
+        self.get_logger().info("="*60)
+        self.get_logger().info("📡 GNSS发布节点配置")
+        self.get_logger().info("="*60)
+        self.get_logger().info(f"配置文件: {config_file}")
+        self.get_logger().info(f"发布频率: {self.publish_rate} Hz")
+        self.get_logger().info(f"发布话题: {self.gnss_pub_topic}")
+        self.get_logger().info(f"经纬度: Lon={self.base_params['lon']}, Lat={self.base_params['lat']}")
+        self.get_logger().info(f"朝向: 水平={self.base_params['horizontal_orientation']}°, 垂直={self.base_params['vertical_orientation']}°")
+        self.get_logger().info(f"相机高度: {self.base_params['camera_height']} m")
+        self.get_logger().info("="*60)
 
     def add_noise(self, base_value, noise_range):
         """为参数添加微小随机扰动，模拟真实设备误差"""

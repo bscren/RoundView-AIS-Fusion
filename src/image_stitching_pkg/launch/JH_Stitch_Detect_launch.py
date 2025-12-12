@@ -24,7 +24,7 @@ def generate_launch_description():
     # 2. 启动相机
     # 2.1 ros2 run image_stitching_pkg JH_rtsp 1 2 3
     play_rtsp = ExecuteProcess(
-        cmd=['ros2', 'run', 'image_stitching_pkg', 'JH_rtsp', '1', '2', '3'],
+        cmd=['ros2', 'run', 'image_stitching_pkg', 'JH_rtsp'],
         output='screen',
     )
     
@@ -34,30 +34,6 @@ def generate_launch_description():
         executable='JH_ROS_stitch',
         name='topic_stitch',
         output='screen',
-        parameters=[{
-            'refresh_time': 5, # 刷新时间间隔，单位秒
-            'min_keypoints': 100, # 最小关键点数
-            'min_confidence': 0.5, # 匹配对最小置信度
-            'min_inliers': 10, # 最小内点数
-            'max_focal_variance': 50000.0, # 最大焦距方差
-            'y_tolerance': 200.0, # 拼接图像间的y轴容差
-            'roi_threshold': 0.95, # 掩码去除黑边的ROI阈值
-            'scale': 0.5, # 图像缩放比例
-            'cropornot': True, # 是否裁剪全景图
-            'drawboxornot': True, # 是否绘制检测框
-            'save_CameraParams': False, # 是否保存相机K R T参数
-            'save_CameraParams_path': "/home/tl/RV/src/image_stitching_pkg/config/CameraParams_SiteTest.yaml",
-            'use_saved_CameraParams': True, # 是否使用已保存的相机K R T参数
-            'FOV_hor': 105.0, # 水平视场角
-            'FOV_ver': 57.0 # 垂直视场角
-        }],
-        remappings=[
-            ('/rtsp_image_0', '/rtsp_image_0'),# 左->右
-            ('/rtsp_image_1', '/rtsp_image_1'),
-            ('/rtsp_image_2', '/rtsp_image_2'),
-            ('/yolo/detection_results', '/yolo/detection_results'),
-            ('image_topic_all', '/image_topic_all')
-        ]
     )
     
     # 2.4 启动rqt

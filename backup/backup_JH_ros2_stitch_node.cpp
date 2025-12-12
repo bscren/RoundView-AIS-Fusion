@@ -25,13 +25,6 @@
 #include <thread>
 #include <atomic>
 #include <nlohmann/json.hpp>
-#include <fstream>
-
-// YAML解析库
-#include <yaml-cpp/yaml.h>
-
-// ROS 2包路径查找
-#include <ament_index_cpp/get_package_share_directory.hpp>
 
 using json = nlohmann::json;
 using namespace std;
@@ -45,128 +38,6 @@ using VisiableTraMsg = marnav_interfaces::msg::VisiableTra;
 using VisiableTraBatchMsg = marnav_interfaces::msg::VisiableTraBatch;
 using GnssMsg = marnav_interfaces::msg::Gnss;
 
-// 相机配置结构体
-struct CameraConfig {
-    std::string camera_name;
-    std::string topic_name;
-    int camera_index;
-};
-
-// 配置结构体
-struct NodeConfig {
-    std::vector<CameraConfig> cameras;
-    std::string jhjpg_msg_topic;
-    int publish_timeout;
-    std::string fus_trajectory_topic;
-    std::string gnss_topic;
-    std::string get_camera_params_service;
-    
-    // Stitcher参数
-    int refresh_time;
-    int min_keypoints;
-    double min_confidence;
-    int min_inliers;
-    double max_focal_variance;
-    double y_tolerance;
-    float roi_threshold;
-    double scale;
-    bool cropornot;
-    bool drawboxornot;
-    bool save_CameraParams;
-    std::string save_CameraParams_path;
-    bool use_saved_CameraParams;
-    double FOV_hor;
-    double FOV_ver;
-};
-
-// 从YAML文件加载配置
-bool loadConfigFromYAML(const std::string& config_file_path, NodeConfig& config, rclcpp::Logger logger) {
-    try {
-        YAML::Node yaml_config = YAML::LoadFile(config_file_path);
-        
-        if (!yaml_config["parameters"]) {
-            RCLCPP_ERROR(logger, "YAML配置文件中未找到'parameters'节点");
-            return false;
-        }
-        
-        const YAML::Node& params = yaml_config["parameters"];
-        
-        // 读取主程序参数
-        if (!params["Main_parameters"]) {
-            RCLCPP_ERROR(logger, "YAML配置文件中未找到'Main_parameters'节点");
-            return false;
-        }
-        
-        const YAML::Node& main_params = params["Main_parameters"];
-        
-        // 读取相机配置
-        if (!main_params["cameras"] || !main_params["cameras"].IsSequence()) {
-            RCLCPP_ERROR(logger, "YAML配置文件中未找到有效的'cameras'列表");
-            return false;
-        }
-        
-        config.cameras.clear();
-        for (const auto& cam : main_params["cameras"]) {
-            CameraConfig camera_config;
-            if (!cam["camera_name"] || !cam["topic_name"] || !cam["camera_index"]) {
-                RCLCPP_WARN(logger, "跳过无效的相机配置项");
-                continue;
-            }
-            camera_config.camera_name = cam["camera_name"].as<std::string>();
-            camera_config.topic_name = cam["topic_name"].as<std::string>();
-            camera_config.camera_index = cam["camera_index"].as<int>();
-            config.cameras.push_back(camera_config);
-        }
-        
-        if (config.cameras.empty()) {
-            RCLCPP_ERROR(logger, "未找到有效的相机配置");
-            return false;
-        }
-        
-        // 读取其他主程序参数
-        config.jhjpg_msg_topic = main_params["JHjpgMsg_topic"].as<std::string>();
-        config.publish_timeout = main_params["publish_timeout"].as<int>();
-        config.fus_trajectory_topic = main_params["fus_trajectory_topic"].as<std::string>();
-        config.gnss_topic = main_params["gnss_topic"].as<std::string>();
-        config.get_camera_params_service = main_params["get_camera_params_service"].as<std::string>();
-        
-        // 读取Stitcher参数
-        if (!params["Stitcher_parameters"]) {
-            RCLCPP_ERROR(logger, "YAML配置文件中未找到'Stitcher_parameters'节点");
-            return false;
-        }
-        
-        const YAML::Node& stitcher_params = params["Stitcher_parameters"];
-        config.refresh_time = stitcher_params["refresh_time"].as<int>();
-        config.min_keypoints = stitcher_params["min_keypoints"].as<int>();
-        config.min_confidence = stitcher_params["min_confidence"].as<double>();
-        config.min_inliers = stitcher_params["min_inliers"].as<int>();
-        config.max_focal_variance = stitcher_params["max_focal_variance"].as<double>();
-        config.y_tolerance = stitcher_params["y_tolerance"].as<double>();
-        config.roi_threshold = stitcher_params["roi_threshold"].as<float>();
-        config.scale = stitcher_params["scale"].as<double>();
-        config.cropornot = stitcher_params["cropornot"].as<bool>();
-        config.drawboxornot = stitcher_params["drawboxornot"].as<bool>();
-        config.save_CameraParams = stitcher_params["save_CameraParams"].as<bool>();
-        config.save_CameraParams_path = stitcher_params["save_CameraParams_path"].as<std::string>();
-        config.use_saved_CameraParams = stitcher_params["use_saved_CameraParams"].as<bool>();
-        config.FOV_hor = stitcher_params["FOV_hor"].as<double>();
-        config.FOV_ver = stitcher_params["FOV_ver"].as<double>();
-        
-        RCLCPP_INFO(logger, "成功加载配置文件: %s", config_file_path.c_str());
-        RCLCPP_INFO(logger, "加载了 %zu 个相机配置", config.cameras.size());
-        
-        return true;
-        
-    } catch (const YAML::Exception& e) {
-        RCLCPP_ERROR(logger, "解析YAML配置文件失败: %s", e.what());
-        return false;
-    } catch (const std::exception& e) {
-        RCLCPP_ERROR(logger, "读取配置文件时发生错误: %s", e.what());
-        return false;
-    }
-}
-
 class JHRos2StitchNode : public rclcpp::Node {
 public:
     JHRos2StitchNode() : Node("topic_stitch") {
@@ -174,67 +45,40 @@ public:
         callback_group_ = this->create_callback_group(
             rclcpp::CallbackGroupType::Reentrant);
         
-        // 获取配置文件路径（支持通过ROS参数配置）
-        this->declare_parameter<std::string>("config_file", "");
-        std::string config_file_path = this->get_parameter("config_file").as_string();
+        // 相机名称到索引的映射
+        cam_name_to_idx_ = {
+            {"rtsp_image_0", 0},
+            {"rtsp_image_1", 1},
+            {"rtsp_image_2", 2}
+        };            
         
-        // 如果未指定配置文件，使用默认路径
-        if (config_file_path.empty()) {
-            std::string package_path = ament_index_cpp::get_package_share_directory("image_stitching_pkg");
-            config_file_path = package_path + "/config/JH_stitch_config.yaml";
-            RCLCPP_INFO(this->get_logger(), "未指定配置文件，使用默认路径: %s", config_file_path.c_str());
-        }
-        
-        // 检查配置文件是否存在
-        std::ifstream file_check(config_file_path);
-        if (!file_check.good()) {
-            RCLCPP_FATAL(this->get_logger(), "配置文件不存在: %s", config_file_path.c_str());
-            throw std::runtime_error("配置文件不存在: " + config_file_path);
-        }
-        file_check.close();
-        
-        // 从YAML文件加载配置
-        NodeConfig config;
-        if (!loadConfigFromYAML(config_file_path, config, this->get_logger())) {
-            RCLCPP_FATAL(this->get_logger(), "加载配置文件失败，程序退出");
-            throw std::runtime_error("加载配置文件失败");
-        }
-        
-        // 从配置中构建相机名称到索引的映射
-        cam_name_to_idx_.clear();
-        std::vector<std::string> camera_topic_names;
-        for (const auto& cam : config.cameras) {
-            cam_name_to_idx_[cam.camera_name] = cam.camera_index;
-            camera_topic_names.push_back(cam.topic_name);
-            RCLCPP_INFO(this->get_logger(), "相机配置: name=%s, topic=%s, index=%d", 
-                       cam.camera_name.c_str(), cam.topic_name.c_str(), cam.camera_index);
-        }
-        
-        // 检查相机数量（当前实现固定为3个）
-        if (camera_topic_names.size() != 3) {
-            RCLCPP_FATAL(this->get_logger(), "当前实现仅支持3个相机，但配置文件中定义了 %zu 个相机", camera_topic_names.size());
-            throw std::runtime_error("相机数量不匹配");
-        }
-        
-        // 使用配置创建拼接器
         stitcher_ = std::make_unique<JHStitcher>(
             cam_name_to_idx_, //相机名称到索引的映射
-            config.refresh_time,
-            config.min_keypoints,
-            config.min_confidence,
-            config.min_inliers,
-            config.max_focal_variance,
-            config.y_tolerance,
-            config.roi_threshold,
-            config.scale,
-            config.cropornot,
-            config.drawboxornot,
-            config.save_CameraParams,
-            config.save_CameraParams_path,
-            config.use_saved_CameraParams,
-            config.FOV_hor,
-            config.FOV_ver
+            this->declare_parameter("refresh_time", 2),
+            this->declare_parameter("min_keypoints", 50),
+            this->declare_parameter("min_confidence", 0.4),
+            this->declare_parameter("min_inliers", 50),
+            this->declare_parameter("max_focal_variance", 50000.0),
+            this->declare_parameter("y_tolerance", 200.0),
+            this->declare_parameter("roi_threshold", 0.95f),
+            this->declare_parameter("scale", 0.75),
+            this->declare_parameter("cropornot",true),
+            this->declare_parameter("drawboxornot",true),
+            this->declare_parameter("save_CameraParams",false),
+            this->declare_parameter("save_CameraParams_path","/home/tl/RV/src/image_stitching_pkg/config/CameraParams.yaml"),
+            this->declare_parameter("use_saved_CameraParams",true),
+            this->declare_parameter("FOV_hor",105.0),
+            this->declare_parameter("FOV_ver",57.0)
         );
+
+        // // 在节点中检查参数
+        // bool use_sim_time;
+        // this->get_parameter("use_sim_time", use_sim_time);
+        // if (use_sim_time) {
+        // RCLCPP_INFO(this->get_logger(), "使用仿真时间");
+        // } else {
+        // RCLCPP_INFO(this->get_logger(), "使用实际系统时间");
+        // }
         
         // 初始化订阅器（配置QoS策略以匹配发布者）
         // 图像话题通常使用 BEST_EFFORT 可靠性策略
@@ -242,13 +86,11 @@ public:
             .reliability(rclcpp::ReliabilityPolicy::BestEffort)
             .durability(rclcpp::DurabilityPolicy::Volatile);
         
-        // 从配置中读取话题名称创建订阅器
-        img1_sub_ = std::make_shared<Subscriber>(this, camera_topic_names[0], image_qos.get_rmw_qos_profile());
-        img2_sub_ = std::make_shared<Subscriber>(this, camera_topic_names[1], image_qos.get_rmw_qos_profile());
-        img3_sub_ = std::make_shared<Subscriber>(this, camera_topic_names[2], image_qos.get_rmw_qos_profile());
-        
-        RCLCPP_INFO(this->get_logger(), "订阅相机话题: %s, %s, %s", 
-                   camera_topic_names[0].c_str(), camera_topic_names[1].c_str(), camera_topic_names[2].c_str());
+        //  =================================================== DEBUG ===================================================
+        img1_sub_ = std::make_shared<Subscriber>(this, "/camera_image_topic_0", image_qos.get_rmw_qos_profile());
+        img2_sub_ = std::make_shared<Subscriber>(this, "/camera_image_topic_1", image_qos.get_rmw_qos_profile());
+        img3_sub_ = std::make_shared<Subscriber>(this, "/camera_image_topic_2", image_qos.get_rmw_qos_profile());
+        // =================================================== DEBUG ===================================================
 
         // 创建图像接收同步器
         sync_ = std::make_shared<message_filters::Synchronizer<SyncPolicy>>(
@@ -260,34 +102,32 @@ public:
             std::bind(&JHRos2StitchNode::image_callback, this,
                       std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
 
-        // 创建定时更新拼缝线的定时器（使用配置中的refresh_time）
+        // 创建定时更新拼缝线的定时器
         stitch_timer_ = this->create_wall_timer(
-            std::chrono::seconds(config.refresh_time),
+            std::chrono::seconds(this->get_parameter("refresh_time").as_int()),
             std::bind(&JHRos2StitchNode::update_stitch_line, this),
             callback_group_);
 
-        // 初始化拼接图像的发布器（使用配置中的话题名称）
-        stitched_pub_ = this->create_publisher<JHjpgMsg>(config.jhjpg_msg_topic, 10);
-        RCLCPP_INFO(this->get_logger(), "发布拼接图像话题: %s", config.jhjpg_msg_topic.c_str());
+        // 初始化拼接图像的发布器
+        stitched_pub_ = this->create_publisher<JHjpgMsg>("image_topic_all", 10);
 
-        // 初始化监控发布超时的定时器（使用配置中的publish_timeout）
-        watchdog_pub_timeout = config.publish_timeout;
+        // 初始化监控发布超时的定时器
+        watchdog_pub_timeout = this->declare_parameter("publish_timeout", 5); // 默认5秒
         watchdog_timer_ = this->create_wall_timer(
-            std::chrono::seconds(30), // 每30秒检查一次
+            std::chrono::seconds(10), // 每30秒检查一次
             std::bind(&JHRos2StitchNode::check_publish_timeout, this),
             callback_group_);   
 
-        // 初始化船只跟踪的订阅器（使用配置中的话题名称）
+        // 初始化船只跟踪的订阅器（使用与发布者相同的QoS策略）
         auto qos = rclcpp::QoS(rclcpp::KeepLast(3))
             .reliability(rclcpp::ReliabilityPolicy::BestEffort);
         rclcpp::SubscriptionOptions sub_options;
         sub_options.callback_group = callback_group_;
         visiable_tra_sub_ = this->create_subscription<VisiableTraBatchMsg>(
-            config.fus_trajectory_topic,
+            "/fus_trajectory_topic",
             qos,
             std::bind(&JHRos2StitchNode::visiable_tra_callback, this, std::placeholders::_1),
             sub_options);
-        RCLCPP_INFO(this->get_logger(), "订阅船只跟踪话题: %s", config.fus_trajectory_topic.c_str());
         
         // 初始化船只跟踪缓存队列，每个队列对应一个相机的船只跟踪消息
         latest_visiable_tra_cache_.resize(cam_name_to_idx_.size());
@@ -295,31 +135,38 @@ public:
             latest_visiable_tra_cache_[i] = std::queue<VisiableTra>();
         }
 
-        // 创建GNSS的订阅器（使用配置中的话题名称）
+        // 创建GNSS的订阅器
         gnss_sub_ = this->create_subscription<GnssMsg>(
-            config.gnss_topic,
+            "/gnss_topic",
             rclcpp::QoS(rclcpp::KeepLast(5))
             .reliability(rclcpp::ReliabilityPolicy::BestEffort),
             std::bind(&JHRos2StitchNode::gnss_callback, this, std::placeholders::_1),
             sub_options);
-        RCLCPP_INFO(this->get_logger(), "订阅GNSS话题: %s", config.gnss_topic.c_str());
 
-        // 创建获取相机参数服务（使用配置中的服务名称）
+        // 创建获取相机参数服务
         get_camera_params_srv_ = this->create_service<GetCameraParamsSrv>(
-            config.get_camera_params_service,
+            "/get_camera_params_service",
             std::bind(&JHRos2StitchNode::getCameraParamsCallback, this,
                       std::placeholders::_1, std::placeholders::_2)
         );
-        RCLCPP_INFO(this->get_logger(), "创建获取相机参数服务: %s", config.get_camera_params_service.c_str());
 
+             // 新增：读取超时阈值参数（默认5秒，可在launch或参数文件中配置）
+    // watchdog_pub_timeout = this->declare_parameter("publish_timeout", 5);
+
+    // // 新增：创建看门狗定时器，每秒检查一次发布状态
+    // watchdog_timer_ = this->create_wall_timer(
+    //     std::chrono::seconds(1),  // 1秒检查一次
+    //     std::bind(&JHRos2StitchNode::check_publish_timeout, this),
+    //     callback_group_  // 使用已有的可重入回调组
+    // );
         // 初始化标志位
         is_first_group_processed_ = false;
         has_received_images_ = false;
         still_detecting = false;
 
-        // 检查是否使用已保存的相机参数（使用配置中的参数）
-        bool use_saved_params = config.use_saved_CameraParams;
-        std::string params_path = config.save_CameraParams_path;
+        // 检查是否使用已保存的相机参数
+        bool use_saved_params = this->get_parameter("use_saved_CameraParams").as_bool();
+        std::string params_path = this->get_parameter("save_CameraParams_path").as_string();
         
         if (use_saved_params) {
             RCLCPP_INFO(this->get_logger(), "========================================");
@@ -424,13 +271,11 @@ private:
             }
         } else {
             // 后续处理，使用已有变换数据
-            // processSubsequentGroup(images);
-            // 性能统计已注释，如需要可以取消注释以下代码
             auto start_time = std::chrono::high_resolution_clock::now();
             processSubsequentGroup(images);
             auto end_time = std::chrono::high_resolution_clock::now();
             auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count();
-            RCLCPP_INFO(this->get_logger(), "PSG处理耗时: %ld 毫秒", duration);
+            // RCLCPP_INFO(this->get_logger(), "PSG处理耗时: %ld 毫秒", duration);
         }
     }
 
@@ -445,14 +290,6 @@ private:
     // 后续处理组
     void processSubsequentGroup(std::vector<cv::Mat> images) {
         // cout<<"又进了process Subsequent Group"<<endl;
-        
-        // 性能监控：检查是否有缝合线检测线程在运行
-        bool detecting = still_detecting.load();
-        if (detecting) {
-            RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 5000,
-                "⚠️ 缝合线检测线程正在运行，可能影响性能");
-        }
-        
         // 调用拼接器处理时，传入检测数据（加锁保护）
         std::lock_guard<std::mutex> lock1(latest_visiable_tra_cache_mutex_); // 确保读取visiable_tra_cache_时线程安全
         cv::Mat stitched_image = stitcher_->processSubsequentGroupImpl(images,latest_visiable_tra_cache_);
@@ -472,7 +309,7 @@ private:
     // 定时更新拼缝线
     void update_stitch_line() {
         if(is_first_group_processed_ && !still_detecting && !stitch_thread.joinable()) {
-            RCLCPP_INFO(this->get_logger(), "🔄 开始更新拼缝线（此过程可能影响主处理线程性能）: %s", thread_info().c_str());
+            RCLCPP_INFO(this->get_logger(), "开始更新拼缝线: %s", thread_info().c_str());
             still_detecting = true;
             
 
@@ -480,11 +317,7 @@ private:
             stitch_thread = std::thread([this]() {
                 // stitcher_->detectStitchLine(); // 内部包含 seam_finder->find
                 try {
-                    auto start_time = std::chrono::high_resolution_clock::now();
                     stitcher_->detectStitchLine();
-                    auto end_time = std::chrono::high_resolution_clock::now();
-                    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count();
-                    RCLCPP_INFO(this->get_logger(), "✅ 缝合线检测完成，耗时: %ld 毫秒", duration);
                 } catch (const std::exception& e) {
                     RCLCPP_ERROR(this->get_logger(), "子线程异常: %s", e.what());
                 }
@@ -498,11 +331,7 @@ private:
                 // still_detecting = false;
                       
         } else {
-            if (!is_first_group_processed_) {
-                RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 10000,
-                    "由于首次处理组尚未完成，跳过这一次拼缝线更新: %s", thread_info().c_str());
-            }
-            // still_detecting=true 说明上一次检测还在进行
+            RCLCPP_WARN(this->get_logger(), "由于首次处理组尚未完成，跳过这一次拼缝线更新: %s", thread_info().c_str());
         }
     }
 
@@ -634,7 +463,8 @@ private:
 
         // 6. 发布消息
         stitched_pub_->publish(jh_msg);
-        // RCLCPP_INFO(this->get_logger(), "发布JHjpg消息，大小: %u 字节，序号: %u\n", jh_msg.size, jh_msg.index);
+        RCLCPP_INFO(this->get_logger(), "发布JHjpg消息，大小: %u 字节，序号: %u\n", 
+                jh_msg.size, jh_msg.index);
     }
 
     // 将轨迹框信息 和 此刻的GNSS消息 转换为JSON格式
@@ -708,60 +538,26 @@ private:
         const std::shared_ptr<detect_interfaces::srv::GetCameraParams::Request> request,
         std::shared_ptr<detect_interfaces::srv::GetCameraParams::Response> response)
     {
-        RCLCPP_INFO(this->get_logger(), "收到获取相机参数请求: %s", request->camera_name.c_str());
-        
-        // 检查拼接器是否已初始化
-        if (!stitcher_) {
-            RCLCPP_WARN(this->get_logger(), "拼接器未初始化，无法获取相机参数");
-            response->success = false;
-            return;
-        }
-        
-        // 检查首次处理是否已完成（TransformationData需要首次处理才能生成）
-        if (!is_first_group_processed_) {
-            RCLCPP_WARN(this->get_logger(), 
-                "首次处理组尚未完成，TransformationData未初始化，无法获取相机参数。请等待图像拼接节点完成首次处理。");
-            response->success = false;
-            return;
-        }
-        
-        // 格式化相机名称到索引的映射用于日志输出
-        const auto& cam_map = stitcher_->getCamNameToIdx();
-        std::string map_str = "相机映射: ";
-        for (const auto& pair : cam_map) {
-            map_str += pair.first + "->" + std::to_string(pair.second) + " ";
-        }
-        RCLCPP_INFO(this->get_logger(), "%s", map_str.c_str());
-        
         // 查找相机索引
         auto cam_name = request->camera_name;
         int cam_idx = -1;
-        if (cam_map.count(cam_name)) {
-            cam_idx = cam_map.at(cam_name);
+        if (stitcher_) {
+            const auto& cam_map = stitcher_->getCamNameToIdx();
+            if (cam_map.count(cam_name)) {
+                cam_idx = cam_map.at(cam_name);
+            }
         }
-        
-        if (cam_idx < 0) {
-            RCLCPP_WARN(this->get_logger(), "未找到相机名称 '%s' 对应的索引", cam_name.c_str());
+        if (cam_idx < 0 || !stitcher_) {
             response->success = false;
             return;
         }
 
         // 获取 TransformationData
         const auto& data = stitcher_->getTransformationData();
-        if (data.cameras.empty()) {
-            RCLCPP_WARN(this->get_logger(), "TransformationData中的相机数组为空，可能首次处理尚未完成");
+        if (cam_idx >= data.cameras.size()) {
             response->success = false;
             return;
         }
-        
-        if (static_cast<size_t>(cam_idx) >= data.cameras.size()) {
-            RCLCPP_WARN(this->get_logger(), 
-                "相机索引 %d 超出范围 [0, %zu)，TransformationData中有 %zu 个相机", 
-                cam_idx, data.cameras.size(), data.cameras.size());
-            response->success = false;
-            return;
-        }
-        
         const auto& cam = data.cameras[cam_idx];
         response->fov_hor = stitcher_->getFOVHor(); // 单位: degree
         response->fov_ver = stitcher_->getFOVVer(); // 单位: degree
@@ -774,8 +570,6 @@ private:
         for (int i = 0; i < 3; ++i) response->transport_matrix[i] = cam.t.at<double>(i, 0);
         cv::Mat K = cam.K();
         for (int i = 0; i < 9; ++i) response->k_matrix[i] = K.at<double>(i / 3, i % 3);
-        
-        RCLCPP_INFO(this->get_logger(), "成功获取相机 %s (索引 %d) 的参数", cam_name.c_str(), cam_idx);
     }
 };
 

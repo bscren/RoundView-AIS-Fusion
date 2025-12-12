@@ -9,33 +9,60 @@ import os
 import time
 from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy
 import numpy as np
+from marnav_vis.config_loader import ConfigLoader
 
 
 class CameraPubNode(Node):
     def __init__(self):
         super().__init__("camera_publisher_node")
-        self.declare_parameters(
-            namespace='',
-            parameters=[
-                ('video_path', '/home/tl/RV/src/marnav_vis/clip-01/2022_06_04_12_05_12_12_07_02_b.mp4'),
-                ('publish_fps', 25),
-                ('width_height', [1280, 720]),
-                ('camera_start_timestamp', 1654315512000),
-                ('noise_range_ns', 10 * 1000000),
-                ('camera_topics',['/camera_image_topic_0', '/camera_image_topic_1', '/camera_image_topic_2'])
-            ]
-        )
-        # ============================================================
-        self.video_path = self.get_parameter('video_path').get_parameter_value().string_value
-        self.publish_fps = self.get_parameter('publish_fps').get_parameter_value().integer_value
-        self.get_logger().info(f"Publish FPS: {self.publish_fps}")
-        self.width_height = self.get_parameter('width_height').get_parameter_value().integer_array_value
-        self.camera_microtimestamp = self.get_parameter('camera_start_timestamp').get_parameter_value().integer_value
-        self.noise_range_ns = self.get_parameter('noise_range_ns').get_parameter_value().integer_value
-        self.camera_topics = self.get_parameter('camera_topics').get_parameter_value().string_array_value
-        # ============================================================
-
-        self.get_logger().info(f"Video path: {self.video_path}, Publish FPS: {self.publish_fps}, Width: {self.width_height[0]}, Height: {self.width_height[1]}, Start in Time: {self.camera_microtimestamp}")
+        
+        # 声明配置文件参数
+        self.declare_parameter('config_file', '')
+        config_file = self.get_parameter('config_file').get_parameter_value().string_value
+        
+        # 如果未指定配置文件，使用默认路径
+        if not config_file:
+            try:
+                config_file = ConfigLoader.find_config_file('marnav_vis', 'track_offline_config.yaml')
+                self.get_logger().info(f"未指定配置文件，使用默认路径: {config_file}")
+            except Exception as e:
+                self.get_logger().error(f"查找默认配置文件失败: {e}")
+                raise
+        
+        # 加载配置
+        try:
+            config_loader = ConfigLoader(config_file)
+            camera_config = config_loader.get_camera_config()
+        except Exception as e:
+            self.get_logger().fatal(f"加载配置文件失败: {e}")
+            raise
+        
+        # 从配置中读取参数
+        self.video_path = camera_config.get('video_path', '')
+        self.publish_fps = camera_config.get('camera_publish_fps', 25)
+        self.width_height = camera_config.get('width_height', [1280, 720])
+        self.camera_microtimestamp = camera_config.get('camera_start_timestamp', 0)
+        self.noise_range_ns = camera_config.get('noise_range_ns', 10000000)
+        
+        # 提取相机话题列表
+        self.camera_topics = [cam['topic_name'] for cam in camera_config.get('cameras', [])]
+        if not self.camera_topics:
+            self.get_logger().fatal("配置文件中未定义相机话题")
+            raise ValueError("未定义相机话题")
+        
+        self.get_logger().info("="*60)
+        self.get_logger().info("📹 相机发布节点配置")
+        self.get_logger().info("="*60)
+        self.get_logger().info(f"配置文件: {config_file}")
+        self.get_logger().info(f"视频路径: {self.video_path}")
+        self.get_logger().info(f"发布频率: {self.publish_fps} Hz")
+        self.get_logger().info(f"图像尺寸: {self.width_height[0]}x{self.width_height[1]}")
+        self.get_logger().info(f"起始时间戳: {self.camera_microtimestamp} ms")
+        self.get_logger().info(f"时间戳噪声: ±{self.noise_range_ns/1000000:.1f} ms")
+        self.get_logger().info(f"相机话题数量: {len(self.camera_topics)}")
+        for topic in self.camera_topics:
+            self.get_logger().info(f"  - {topic}")
+        self.get_logger().info("="*60)
 
         self.cap = cv2.VideoCapture(self.video_path)
 
