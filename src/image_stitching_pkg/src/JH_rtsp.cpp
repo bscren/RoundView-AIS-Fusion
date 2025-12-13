@@ -312,12 +312,17 @@ int main(int argc, char * argv[])
     
     std::vector<rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr> publishers;
 
-    // 为每个摄像头创建发布者（配置 BestEffort QoS 策略）
-    // 图像传输使用 BestEffort 可靠性策略，适合高频率、大数据量传输
+    //  ==================================== DEBUG ====================================
+    // 为每个摄像头创建发布者（配置 普通策略）
+    // auto image_qos = rclcpp::QoS(rclcpp::KeepLast(10))
+    // ==================================== DEBUG ====================================
+    
+    // // 为每个摄像头创建发布者（配置 BestEffort QoS 策略）
+    // // 图像传输使用 BestEffort 可靠性策略，适合高频率、大数据量传输
     auto image_qos = rclcpp::QoS(rclcpp::KeepLast(1))
         .reliability(rclcpp::ReliabilityPolicy::BestEffort)
         .durability(rclcpp::DurabilityPolicy::Volatile);
-    
+
     for (size_t i = 0; i < topic_names.size(); ++i) {
         auto pub = node->create_publisher<sensor_msgs::msg::Image>(
             topic_names[i], 

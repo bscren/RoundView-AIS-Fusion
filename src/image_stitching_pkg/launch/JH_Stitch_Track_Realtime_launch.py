@@ -53,22 +53,20 @@ def generate_launch_description():
 
     # GNSS发布节点
     gnss_pub_node = Node(
-        package='marnav_vis',
-        executable='gnss_pub_node',
-        name='gnss_publisher_node',
+        package='marnav_ais',
+        executable='gnss_parser_pub_node',
+        name='gnss_parser_node',
         output='screen',
         parameters=[{
             'config_file': LaunchConfiguration('track_realtime_config_file')
         }]
     )
 
-
-
     # AIS批量发布节点
     ais_sorted_pub_node = Node(
-        package='marnav_vis',
-        executable='ais_sorted_pub_node',
-        name='ais_batch_publisher_node',
+        package='marnav_ais',
+        executable='ais_parser_batch_pub_node',
+        name='ais_batch_parser',
         output='screen',
         parameters=[{
             'config_file': LaunchConfiguration('track_realtime_config_file')

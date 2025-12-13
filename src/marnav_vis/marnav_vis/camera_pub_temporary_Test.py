@@ -45,7 +45,8 @@ class CameraPubNode(Node):
         self.noise_range_ns = camera_config.get('noise_range_ns', 10000000)
         
         # 提取相机话题列表
-        self.camera_topics = [cam['topic_name'] for cam in camera_config.get('cameras', [])]
+        self.camera_parameters = camera_config.get('camera_parameters',[])
+        self.camera_topics = [cam['topic_name'] for cam in self.camera_parameters]
         if not self.camera_topics:
             self.get_logger().fatal("配置文件中未定义相机话题")
             raise ValueError("未定义相机话题")

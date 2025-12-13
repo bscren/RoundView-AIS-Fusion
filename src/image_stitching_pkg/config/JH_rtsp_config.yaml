@@ -2,8 +2,8 @@
 # 此配置文件用于配置RTSP视频流的地址和ROS话题名称
 # 可以根据实际需要增加或减少相机配置项
 
-input_frame_rate: 20 # 相机设置的输入帧率
-target_frame_rate: 20 # 目标帧率，测试结果为与相机设置的输入帧率一致表现最好
+input_frame_rate: 25 # 相机设置的输入帧率
+target_frame_rate: 25 # 目标帧率，测试结果为与相机设置的输入帧率一致表现最好
 
 # 发布的相机配置列表
 cameras:

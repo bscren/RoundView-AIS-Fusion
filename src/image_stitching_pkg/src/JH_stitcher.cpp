@@ -369,61 +369,83 @@ cv::Mat JHStitcher::processSubsequentGroupImpl
     (const std::vector<cv::Mat>& images,
      const std::vector<std::queue<VisiableTra>>& latest_visiable_tra_cache_)
     {
-    // 新建data用于规避拼接线检测时的读写冲突
-        TransformationData data;
-        {
-            std::lock_guard<std::mutex> lock(transformation_mutex_);
-            if (transformation_data_.cameras.empty()) {
-                // cout<<"无有效变换数据，跳过后续处理"<<endl;
-                return cv::Mat();
-            }
-            data = transformation_data_;
+    // ========== 性能监控：总体计时开始 ==========
+    auto total_start = chrono::high_resolution_clock::now();
+    
+    // ========== 步骤1：读取变换数据（含锁等待） ==========
+    auto step1_start = chrono::high_resolution_clock::now();
+    TransformationData data;
+    {
+        std::lock_guard<std::mutex> lock(transformation_mutex_);
+        if (transformation_data_.cameras.empty()) {
+            return cv::Mat();
         }
+        data = transformation_data_;
+    }
+    auto step1_end = chrono::high_resolution_clock::now();
+    auto step1_duration = chrono::duration_cast<chrono::milliseconds>(step1_end - step1_start).count();
 
     size_t num_images = images.size();
     if (num_images != data.cameras.size()) {
-        // std::cout<< "图像数量与相机参数不匹配" <<std::endl;
         return cv::Mat();
     }
 
-    // 图像扭曲
-    // 计算耗时
-    auto start_time_warp = chrono::high_resolution_clock::now();
+    // ========== 步骤2：图像扭曲（CylindricalWarper） ==========
+    auto step2_start = chrono::high_resolution_clock::now();
     std::vector<cv::Mat> images_warp(num_images);
     for (size_t i = 0; i < num_images; ++i) {
         cv::Mat K;
         data.cameras[i].K().convertTo(K, CV_32F);
         data.warper->warp(images[i], K, data.cameras[i].R, cv::INTER_LINEAR, cv::BORDER_REFLECT, images_warp[i]);
     }
-    auto end_time_warp = chrono::high_resolution_clock::now();
-    chrono::duration<double> duration_time_warp = end_time_warp - start_time_warp;
-    // cout << "图像扭曲耗时: " << duration_time_warp.count() << " seconds." << endl;
+    auto step2_end = chrono::high_resolution_clock::now();
+    auto step2_duration = chrono::duration_cast<chrono::milliseconds>(step2_end - step2_start).count();
 
-    // 写入时加独占锁（阻塞所有读和写）
-    // 优化：缩短锁持有时间，仅在复制图像时加锁
+    // ========== 步骤3：写入缓存（独占锁） ==========
+    auto step3_start = chrono::high_resolution_clock::now();
     {
         std::unique_lock<std::shared_mutex> lock(rw_mutex_);
         for (size_t i = 0; i < images_warp.size(); ++i) {
             images_warp[i].copyTo(latest_warp_images_32F[i]);
         }
-    } // 锁在这里释放
+    }
+    auto step3_end = chrono::high_resolution_clock::now();
+    auto step3_duration = chrono::duration_cast<chrono::milliseconds>(step3_end - step3_start).count();
 
-    // 图像融合
+    // ========== 步骤4：图像融合准备（创建Blender） ==========
+    auto step4_start = chrono::high_resolution_clock::now();
     cv::Ptr<Blender> blender = Blender::createDefault(Blender::NO, false);
     blender->prepare(data.corners, data.sizes);
+    auto step4_end = chrono::high_resolution_clock::now();
+    auto step4_duration = chrono::duration_cast<chrono::milliseconds>(step4_end - step4_start).count();
+
+    // ========== 步骤5：类型转换与Feed ==========
+    auto step5_start = chrono::high_resolution_clock::now();
     for (size_t i = 0; i < num_images; ++i) {
         Mat img_warp_16s;
         images_warp[i].convertTo(img_warp_16s, CV_16S);
         blender->feed(img_warp_16s, data.masks[i], data.corners[i]);
     }
+    auto step5_end = chrono::high_resolution_clock::now();
+    auto step5_duration = chrono::duration_cast<chrono::milliseconds>(step5_end - step5_start).count();
 
+    // ========== 步骤6：Blend融合 ==========
+    auto step6_start = chrono::high_resolution_clock::now();
     Mat pano_result, result_mask;
     blender->blend(pano_result, result_mask);
+    auto step6_end = chrono::high_resolution_clock::now();
+    auto step6_duration = chrono::duration_cast<chrono::milliseconds>(step6_end - step6_start).count();
 
+    // ========== 步骤7：图像缩放 ==========
+    auto step7_start = chrono::high_resolution_clock::now();
     cv::Mat resized_pano_result = Mat();
-    resize(pano_result,resized_pano_result,cv::Size(static_cast<int>(pano_result.cols*scale_),static_cast<int>(pano_result.rows*scale_)),0,0,cv::INTER_LINEAR);
-    // cout<<"resized_pano_result size = "<<resized_pano_result.size()<<endl;
-    // 判断裁剪resized图像有效性
+    resize(pano_result, resized_pano_result, 
+           cv::Size(static_cast<int>(pano_result.cols*scale_), static_cast<int>(pano_result.rows*scale_)),
+           0, 0, cv::INTER_LINEAR);
+    auto step7_end = chrono::high_resolution_clock::now();
+    auto step7_duration = chrono::duration_cast<chrono::milliseconds>(step7_end - step7_start).count();
+
+    // 判断裁剪区域有效性
     if (data.crop_roi.empty() || data.crop_roi.x < 0 || data.crop_roi.y < 0 || 
         data.crop_roi.x + data.crop_roi.width > resized_pano_result.cols || 
         data.crop_roi.y + data.crop_roi.height > resized_pano_result.rows) {
@@ -431,21 +453,42 @@ cv::Mat JHStitcher::processSubsequentGroupImpl
         return Mat();
     }
     
-    // 开始处理轨迹框，主要是依据相机拼接的内参和变换参数，将各个相机的检测框投影到拼接图上
-    CalibTrajInPano(resized_pano_result, data,latest_visiable_tra_cache_);        
+    // ========== 步骤8：轨迹框投影 ==========
+    auto step8_start = chrono::high_resolution_clock::now();
+    CalibTrajInPano(resized_pano_result, data, latest_visiable_tra_cache_);
+    auto step8_end = chrono::high_resolution_clock::now();
+    auto step8_duration = chrono::duration_cast<chrono::milliseconds>(step8_end - step8_start).count();
 
-    // cout<<"image_warp size = "<<images_warp[0].size()<<endl;
-    // cout<<"单张图片大小 = "<<images[0].size()<<endl;
-    // cout<<"掩码大小 = "<<data.masks[0].size()<<endl;
-    // cout <<"data.crop_roi = "<< data.crop_roi << endl;
-
-    // 返回裁剪图像
+    // ========== 步骤9：裁剪 ==========
+    auto step9_start = chrono::high_resolution_clock::now();
+    cv::Mat final_result;
     if(cropornot_){
-        return  resized_pano_result(data.crop_roi);
+        final_result = resized_pano_result(data.crop_roi);
+    } else {
+        final_result = resized_pano_result;
     }
-    else{
-        return resized_pano_result;
+    auto step9_end = chrono::high_resolution_clock::now();
+    auto step9_duration = chrono::duration_cast<chrono::milliseconds>(step9_end - step9_start).count();
+
+    // ========== 性能监控：总体计时结束 ==========
+    auto total_end = chrono::high_resolution_clock::now();
+    auto total_duration = chrono::duration_cast<chrono::milliseconds>(total_end - total_start).count();
+
+    // ========== 性能报告（仅在总耗时>60ms时输出详细信息） ==========
+    if (total_duration > 60) {
+        std::cout << "⚠️ [性能分析] 总耗时: " << total_duration << "ms (>100ms)" << std::endl;
+        std::cout << "  ├─ 步骤1-读取变换数据: " << step1_duration << "ms" << std::endl;
+        std::cout << "  ├─ 步骤2-图像扭曲: " << step2_duration << "ms" << std::endl;
+        std::cout << "  ├─ 步骤3-写入缓存(锁): " << step3_duration << "ms" << std::endl;
+        std::cout << "  ├─ 步骤4-创建Blender: " << step4_duration << "ms" << std::endl;
+        std::cout << "  ├─ 步骤5-类型转换&Feed: " << step5_duration << "ms" << std::endl;
+        std::cout << "  ├─ 步骤6-Blend融合: " << step6_duration << "ms" << std::endl;
+        std::cout << "  ├─ 步骤7-图像缩放: " << step7_duration << "ms" << std::endl;
+        std::cout << "  ├─ 步骤8-轨迹框投影: " << step8_duration << "ms" << std::endl;
+        std::cout << "  └─ 步骤9-裁剪: " << step9_duration << "ms" << std::endl;
     }
+
+    return final_result;
 }
 
 void JHStitcher::detectStitchLine() 

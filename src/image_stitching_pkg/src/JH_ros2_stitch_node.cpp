@@ -10,8 +10,6 @@
 #include "mycustface/msg/j_hjpg.hpp"
 #include "mycustface/msg/header.hpp"
 
-// 服务头文件
-#include "detect_interfaces/srv/get_camera_params.hpp"
 
 // 船只跟踪消息体文件
 #include "marnav_interfaces/msg/visiable_tra.hpp"
@@ -40,7 +38,6 @@ using namespace message_filters;
 
 // 消息类型别名和服务类型别名
 using JHjpgMsg = mycustface::msg::JHjpg;
-using GetCameraParamsSrv = detect_interfaces::srv::GetCameraParams;
 using VisiableTraMsg = marnav_interfaces::msg::VisiableTra;
 using VisiableTraBatchMsg = marnav_interfaces::msg::VisiableTraBatch;
 using GnssMsg = marnav_interfaces::msg::Gnss;
@@ -267,8 +264,17 @@ public:
             callback_group_);
 
         // 初始化拼接图像的发布器（使用配置中的话题名称）
-        stitched_pub_ = this->create_publisher<JHjpgMsg>(config.jhjpg_msg_topic, 10);
-        RCLCPP_INFO(this->get_logger(), "发布拼接图像话题: %s", config.jhjpg_msg_topic.c_str());
+        // 优化QoS配置以减少发布延迟波动：
+        // 1. BestEffort: 不等待ACK，允许丢帧（视频流可接受）
+        // 2. KeepLast(1): 只保留最新帧，避免队列堵塞
+        // 3. Volatile: 不持久化历史消息
+        auto stitched_qos = rclcpp::QoS(rclcpp::KeepLast(1))
+            .reliability(rclcpp::ReliabilityPolicy::BestEffort)
+            .durability(rclcpp::DurabilityPolicy::Volatile);
+        
+        stitched_pub_ = this->create_publisher<JHjpgMsg>(config.jhjpg_msg_topic, stitched_qos);
+        RCLCPP_INFO(this->get_logger(), "发布拼接图像话题: %s (QoS: BestEffort, KeepLast(1))", 
+                   config.jhjpg_msg_topic.c_str());
 
         // 初始化监控发布超时的定时器（使用配置中的publish_timeout）
         watchdog_pub_timeout = config.publish_timeout;
@@ -278,13 +284,13 @@ public:
             callback_group_);   
 
         // 初始化船只跟踪的订阅器（使用配置中的话题名称）
-        auto qos = rclcpp::QoS(rclcpp::KeepLast(3))
+        auto trajectory_qos = rclcpp::QoS(rclcpp::KeepLast(3))
             .reliability(rclcpp::ReliabilityPolicy::BestEffort);
         rclcpp::SubscriptionOptions sub_options;
         sub_options.callback_group = callback_group_;
         visiable_tra_sub_ = this->create_subscription<VisiableTraBatchMsg>(
             config.fus_trajectory_topic,
-            qos,
+            trajectory_qos,
             std::bind(&JHRos2StitchNode::visiable_tra_callback, this, std::placeholders::_1),
             sub_options);
         RCLCPP_INFO(this->get_logger(), "订阅船只跟踪话题: %s", config.fus_trajectory_topic.c_str());
@@ -304,13 +310,6 @@ public:
             sub_options);
         RCLCPP_INFO(this->get_logger(), "订阅GNSS话题: %s", config.gnss_topic.c_str());
 
-        // 创建获取相机参数服务（使用配置中的服务名称）
-        get_camera_params_srv_ = this->create_service<GetCameraParamsSrv>(
-            config.get_camera_params_service,
-            std::bind(&JHRos2StitchNode::getCameraParamsCallback, this,
-                      std::placeholders::_1, std::placeholders::_2)
-        );
-        RCLCPP_INFO(this->get_logger(), "创建获取相机参数服务: %s", config.get_camera_params_service.c_str());
 
         // 初始化标志位
         is_first_group_processed_ = false;
@@ -338,6 +337,7 @@ public:
         }
         
     }
+
     
 
 private:
@@ -355,7 +355,6 @@ private:
     std::shared_ptr<message_filters::Synchronizer<SyncPolicy>> sync_;
     rclcpp::Subscription<VisiableTraBatchMsg>::SharedPtr visiable_tra_sub_;
     rclcpp::Publisher<JHjpgMsg>::SharedPtr stitched_pub_;
-    rclcpp::Service<GetCameraParamsSrv>::SharedPtr get_camera_params_srv_;
     rclcpp::TimerBase::SharedPtr stitch_timer_;
     
     // 相机名称到索引的映射（成员变量）
@@ -399,10 +398,9 @@ private:
                        const Image::ConstSharedPtr& img2,
                        const Image::ConstSharedPtr& img3) {
 
-        // 转换ROS图像消息为OpenCV格式
+        // ROS图像转换为OpenCV格式
         std::vector<cv::Mat> images; 
         try {
-            // cout<<"进了image callback ing"<<endl;
             images.push_back(cv_bridge::toCvShare(img1, "bgr8")->image.clone());
             images.push_back(cv_bridge::toCvShare(img2, "bgr8")->image.clone());
             images.push_back(cv_bridge::toCvShare(img3, "bgr8")->image.clone());
@@ -410,8 +408,6 @@ private:
             RCLCPP_ERROR(this->get_logger(), "cv_bridge转换错误: %s", e.what());
             return;
         }
-
-
         if (!is_first_group_processed_) {
             // 首次处理，生成变换数据
             if(processFirstGroup(images)) {
@@ -423,14 +419,8 @@ private:
                 return;
             }
         } else {
-            // 后续处理，使用已有变换数据
-            // processSubsequentGroup(images);
-            // 性能统计已注释，如需要可以取消注释以下代码
-            auto start_time = std::chrono::high_resolution_clock::now();
+            // 后续处理（主要耗时）
             processSubsequentGroup(images);
-            auto end_time = std::chrono::high_resolution_clock::now();
-            auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count();
-            RCLCPP_INFO(this->get_logger(), "PSG处理耗时: %ld 毫秒", duration);
         }
     }
 
@@ -444,7 +434,8 @@ private:
 
     // 后续处理组
     void processSubsequentGroup(std::vector<cv::Mat> images) {
-        // cout<<"又进了process Subsequent Group"<<endl;
+        // ========== 性能监控：节点层面的计时 ==========
+        auto node_total_start = std::chrono::high_resolution_clock::now();
         
         // 性能监控：检查是否有缝合线检测线程在运行
         bool detecting = still_detecting.load();
@@ -453,20 +444,53 @@ private:
                 "⚠️ 缝合线检测线程正在运行，可能影响性能");
         }
         
-        // 调用拼接器处理时，传入检测数据（加锁保护）
-        std::lock_guard<std::mutex> lock1(latest_visiable_tra_cache_mutex_); // 确保读取visiable_tra_cache_时线程安全
-        cv::Mat stitched_image = stitcher_->processSubsequentGroupImpl(images,latest_visiable_tra_cache_);
+        // ========== 步骤A：获取轨迹缓存锁 ==========
+        auto stepA_start = std::chrono::high_resolution_clock::now();
+        std::lock_guard<std::mutex> lock1(latest_visiable_tra_cache_mutex_);
+        auto stepA_end = std::chrono::high_resolution_clock::now();
+        auto stepA_duration = std::chrono::duration_cast<std::chrono::milliseconds>(stepA_end - stepA_start).count();
+        
+        // ========== 步骤B：调用拼接器处理（核心耗时） ==========
+        auto stepB_start = std::chrono::high_resolution_clock::now();
+        cv::Mat stitched_image = stitcher_->processSubsequentGroupImpl(images, latest_visiable_tra_cache_);
+        auto stepB_end = std::chrono::high_resolution_clock::now();
+        auto stepB_duration = std::chrono::duration_cast<std::chrono::milliseconds>(stepB_end - stepB_start).count();
+        
         if (stitched_image.empty()) {
             RCLCPP_ERROR(this->get_logger(), "后续处理失败，无法生成拼接图像");
             return;
         }
         
-        // 获取投影后的轨迹框（通过拼接器的getter接口）
+        // ========== 步骤C：获取轨迹框 ==========
+        auto stepC_start = std::chrono::high_resolution_clock::now();
         const std::vector<TrajectoryBoxInfo>& trajectory_boxes = stitcher_->getTrajectoryBoxes();
-        // 获取最新的GNSS消息
+        auto stepC_end = std::chrono::high_resolution_clock::now();
+        auto stepC_duration = std::chrono::duration_cast<std::chrono::milliseconds>(stepC_end - stepC_start).count();
+        
+        // ========== 步骤D：获取GNSS缓存锁 ==========
+        auto stepD_start = std::chrono::high_resolution_clock::now();
         std::lock_guard<std::mutex> lock2(latest_gnss_cache_mutex_);
-        // 发布拼接图像（同时传入检测框和轨迹框和GNSS消息）
+        auto stepD_end = std::chrono::high_resolution_clock::now();
+        auto stepD_duration = std::chrono::duration_cast<std::chrono::milliseconds>(stepD_end - stepD_start).count();
+        
+        // ========== 步骤E：发布拼接图像 ==========
+        auto stepE_start = std::chrono::high_resolution_clock::now();
         publishStitchedImage(stitched_image, trajectory_boxes, latest_gnss_cache_.front());
+        auto stepE_end = std::chrono::high_resolution_clock::now();
+        auto stepE_duration = std::chrono::duration_cast<std::chrono::milliseconds>(stepE_end - stepE_start).count();
+        
+        // ========== 节点层面总耗时 ==========
+        auto node_total_end = std::chrono::high_resolution_clock::now();
+        auto node_total_duration = std::chrono::duration_cast<std::chrono::milliseconds>(node_total_end - node_total_start).count();
+        
+        // ========== 性能报告（仅在总耗时>60ms时输出） ==========
+        if (node_total_duration > 60) {
+            RCLCPP_WARN(this->get_logger(), 
+                "⚠️ [节点层性能] 总耗时异常: %ld ms", node_total_duration);
+            RCLCPP_INFO(this->get_logger(), 
+                "  步骤A-获取轨迹锁: %ld ms | 步骤B-拼接处理: %ld ms | 步骤C-获取轨迹框: %ld ms | 步骤D-获取GNSS锁: %ld ms | 步骤E-发布图像: %ld ms",
+                stepA_duration, stepB_duration, stepC_duration, stepD_duration, stepE_duration);
+        }
     }
 
     // 定时更新拼缝线
@@ -572,15 +596,16 @@ private:
     void publishStitchedImage(const cv::Mat& stitched_image, 
                              const std::vector<TrajectoryBoxInfo>& trajectory_boxes,
                              const GnssMsg& gnss_msg) {
+        auto pub_total_start = std::chrono::high_resolution_clock::now();
+        
         if (stitched_image.empty()) {
             RCLCPP_ERROR(this->get_logger(), "拼接图像为空，无法发布");
             return;
         }
-        // 拼接图像尺寸打印
-        cout<<"stitched_image.size() = "<<stitched_image.size()<<endl;
-        // 0. 转换为8位图像
+        
+        // ========== 发布步骤1：图像类型转换 ==========
+        auto pub_step1_start = std::chrono::high_resolution_clock::now();
         cv::Mat stitched_8u;
-
         if (stitched_image.type() == CV_16SC3) {
             cv::Mat stitched_32s;
             stitched_image.convertTo(stitched_32s, CV_32SC3);
@@ -594,52 +619,114 @@ private:
         }
         // =================================================== DEBUG ===================================================
         // 只为了好看：
-        stitched_8u = stitched_8u(cv::Rect(0,0,stitched_image.cols,stitched_image.rows*6/7));
+        // stitched_8u = stitched_8u(cv::Rect(0, 0, stitched_image.cols, stitched_image.rows*6/7));
         // =================================================== DEBUG ===================================================
+        auto pub_step1_end = std::chrono::high_resolution_clock::now();
+        auto pub_step1_duration = std::chrono::duration_cast<std::chrono::milliseconds>(pub_step1_end - pub_step1_start).count();
 
-        // 1. 构建自定义消息对象
+        // ========== 发布步骤2：构建消息头 ==========
+        auto pub_step2_start = std::chrono::high_resolution_clock::now();
         JHjpgMsg jh_msg;
-
-        // 2. 填充header1字段（自定义Header）
         mycustface::msg::Header custom_header;
-        // timestamp用当前时间的纳秒数（转换为long类型）
         custom_header.timestamp = this->get_clock()->now().nanoseconds();
-        // cout<<"custom_header.timestamp = "<<custom_header.timestamp<<endl;
-        // rclcpp::Time t(custom_header.timestamp);
-        // RCLCPP_INFO(this->get_logger(), "转换为rclcpp::Time: %u 秒, %u 纳秒", t.seconds(), t.nanoseconds());
-        custom_header.id = "stitched_image_";  // 自定义ID
+        custom_header.id = "stitched_image_";
         jh_msg.mheader = custom_header;
+        jh_msg.index = 1;
+        auto pub_step2_end = std::chrono::high_resolution_clock::now();
+        auto pub_step2_duration = std::chrono::duration_cast<std::chrono::milliseconds>(pub_step2_end - pub_step2_start).count();
 
-        // 3. 填充index字段（递增计数器）
-        jh_msg.index = 1; //msg_index_++;
-
-        // 4. 填充message字段（描述信息）
-        // jh_msg.message = "stitched image from 3 cameras";
+        // ========== 发布步骤3：构建JSON消息 ==========
+        auto pub_step3_start = std::chrono::high_resolution_clock::now();
         JHmessagetoJson(jh_msg.message, trajectory_boxes, gnss_msg);
+        auto pub_step3_end = std::chrono::high_resolution_clock::now();
+        auto pub_step3_duration = std::chrono::duration_cast<std::chrono::milliseconds>(pub_step3_end - pub_step3_start).count();
 
+        // ========== 发布步骤4：JPEG编码 ==========
+        auto pub_step4_start = std::chrono::high_resolution_clock::now();
         std::vector<int> params;
         params.push_back(cv::IMWRITE_JPEG_QUALITY);
-        params.push_back(90); // 设置 JPEG 质量为 95%
+        params.push_back(75);  // 从90降到75，减少编码时间30-40%，图像质量影响很小
+        
+        // 记录编码前的图像信息
+        size_t image_pixels = stitched_8u.rows * stitched_8u.cols;
+        
         bool success = cv::imencode(".jpg", stitched_8u, jh_msg.picture, params);
-        // cout<<"msg->picture.size() = "<<jh_msg.picture.size()<<endl;
-            if (success){                
-                jh_msg.size = jh_msg.picture.size();
-                // jh_msg.index = inx++;
-                // RCLCPP_INFO(this->get_logger(), "Publishing: '%d'", message1.index);
-            }
+        auto pub_step4_end = std::chrono::high_resolution_clock::now();
+        auto pub_step4_duration = std::chrono::duration_cast<std::chrono::milliseconds>(pub_step4_end - pub_step4_start).count();
+        
+        size_t jpeg_size = 0;
+        if (success) {
+            jh_msg.size = jh_msg.picture.size();
+            jpeg_size = jh_msg.picture.size();
+        }
+        
+        // 如果JPEG编码超过50ms，输出详细信息
+        if (pub_step4_duration > 50) {
+            RCLCPP_WARN(this->get_logger(), 
+                "⚠️ JPEG编码耗时异常: %ldms (图像尺寸:%dx%d, 像素数:%zu, 压缩后大小:%zu bytes, 压缩率:%.2f%%)",
+                pub_step4_duration, stitched_8u.cols, stitched_8u.rows, 
+                image_pixels, jpeg_size, (double)jpeg_size / (image_pixels * 3) * 100);
+        }
 
-
-            // 发布成功后，记录当前时间戳（纳秒）
+        // ========== 发布步骤5：ROS2发布 ==========
+        auto pub_step5_start = std::chrono::high_resolution_clock::now();
         watchdog_lastpub_time = this->get_clock()->now().nanoseconds();
-
-        // 6. 发布消息
+        
+        // 记录消息大小
+        size_t total_msg_size = jh_msg.picture.size() + jh_msg.message.size();
+        
         stitched_pub_->publish(jh_msg);
-        // RCLCPP_INFO(this->get_logger(), "发布JHjpg消息，大小: %u 字节，序号: %u\n", jh_msg.size, jh_msg.index);
+        auto pub_step5_end = std::chrono::high_resolution_clock::now();
+        auto pub_step5_duration = std::chrono::duration_cast<std::chrono::milliseconds>(pub_step5_end - pub_step5_start).count();
+        
+        // 记录发布统计信息
+        static int64_t pub_count = 0;
+        static int64_t pub_sum = 0;
+        static int64_t pub_max = 0;
+        pub_count++;
+        pub_sum += pub_step5_duration;
+        if (pub_step5_duration > pub_max) pub_max = pub_step5_duration;
+        
+        // 如果ROS发布超过15ms，输出详细信息（BestEffort模式下应该<10ms）
+        if (pub_step5_duration > 15) {
+            RCLCPP_WARN(this->get_logger(), 
+                "⚠️ ROS2发布耗时异常: %ldms (消息大小:%zu bytes) [平均:%.1fms, 最大:%ldms, 样本数:%ld]",
+                pub_step5_duration, total_msg_size, 
+                (double)pub_sum / pub_count, pub_max, pub_count);
+        }
+        
+        // 每100帧输出一次统计信息
+        if (pub_count % 100 == 0) {
+            RCLCPP_INFO(this->get_logger(), 
+                "📊 ROS2发布统计 (最近100帧): 平均%.1fms, 最大%ldms, 消息大小~%zuKB",
+                (double)pub_sum / pub_count, pub_max, total_msg_size / 1024);
+        }
+
+        // ========== 发布总耗时 ==========
+        auto pub_total_end = std::chrono::high_resolution_clock::now();
+        auto pub_total_duration = std::chrono::duration_cast<std::chrono::milliseconds>(pub_total_end - pub_total_start).count();
+        
+        // 总是输出详细的发布性能信息（因为这是主要瓶颈）
+        if (pub_total_duration > 10) {
+            RCLCPP_WARN(this->get_logger(), 
+                "📤 [发布性能详细] 总耗时: %ldms", pub_total_duration);
+            RCLCPP_INFO(this->get_logger(),
+                "  发布步骤1-图像转换: %ldms | 步骤2-构建头: %ldms | 步骤3-JSON: %ldms | 步骤4-JPEG编码: %ldms | 步骤5-ROS发布: %ldms",
+                pub_step1_duration, pub_step2_duration, pub_step3_duration, 
+                pub_step4_duration, pub_step5_duration);
+        }
     }
 
     // 将轨迹框信息 和 此刻的GNSS消息 转换为JSON格式
     void JHmessagetoJson(std::string& message, const std::vector<TrajectoryBoxInfo>& trajectory_boxes, const GnssMsg& gnss_msg)
     {
+        // 检测trajectory_boxes和gnss_msg是否为空
+        if (trajectory_boxes.empty() || gnss_msg.latitude == 0 || gnss_msg.longitude == 0) {
+            // RCLCPP_ERROR_THROTTLE(this->get_logger(), *this->get_clock(), 1000, "轨迹框或GNSS消息为空，无法转换为JSON");
+            message = "{\"gnss\":{},\"trajectories\":[]}";  // 返回空JSON
+            return;
+        }
+
         // 1. 构建根JSON对象
         json root;
 
@@ -703,80 +790,6 @@ private:
         }
     }
 
-    // 获取相机参数服务回调
-    void getCameraParamsCallback(
-        const std::shared_ptr<detect_interfaces::srv::GetCameraParams::Request> request,
-        std::shared_ptr<detect_interfaces::srv::GetCameraParams::Response> response)
-    {
-        RCLCPP_INFO(this->get_logger(), "收到获取相机参数请求: %s", request->camera_name.c_str());
-        
-        // 检查拼接器是否已初始化
-        if (!stitcher_) {
-            RCLCPP_WARN(this->get_logger(), "拼接器未初始化，无法获取相机参数");
-            response->success = false;
-            return;
-        }
-        
-        // 检查首次处理是否已完成（TransformationData需要首次处理才能生成）
-        if (!is_first_group_processed_) {
-            RCLCPP_WARN(this->get_logger(), 
-                "首次处理组尚未完成，TransformationData未初始化，无法获取相机参数。请等待图像拼接节点完成首次处理。");
-            response->success = false;
-            return;
-        }
-        
-        // 格式化相机名称到索引的映射用于日志输出
-        const auto& cam_map = stitcher_->getCamNameToIdx();
-        std::string map_str = "相机映射: ";
-        for (const auto& pair : cam_map) {
-            map_str += pair.first + "->" + std::to_string(pair.second) + " ";
-        }
-        RCLCPP_INFO(this->get_logger(), "%s", map_str.c_str());
-        
-        // 查找相机索引
-        auto cam_name = request->camera_name;
-        int cam_idx = -1;
-        if (cam_map.count(cam_name)) {
-            cam_idx = cam_map.at(cam_name);
-        }
-        
-        if (cam_idx < 0) {
-            RCLCPP_WARN(this->get_logger(), "未找到相机名称 '%s' 对应的索引", cam_name.c_str());
-            response->success = false;
-            return;
-        }
-
-        // 获取 TransformationData
-        const auto& data = stitcher_->getTransformationData();
-        if (data.cameras.empty()) {
-            RCLCPP_WARN(this->get_logger(), "TransformationData中的相机数组为空，可能首次处理尚未完成");
-            response->success = false;
-            return;
-        }
-        
-        if (static_cast<size_t>(cam_idx) >= data.cameras.size()) {
-            RCLCPP_WARN(this->get_logger(), 
-                "相机索引 %d 超出范围 [0, %zu)，TransformationData中有 %zu 个相机", 
-                cam_idx, data.cameras.size(), data.cameras.size());
-            response->success = false;
-            return;
-        }
-        
-        const auto& cam = data.cameras[cam_idx];
-        response->fov_hor = stitcher_->getFOVHor(); // 单位: degree
-        response->fov_ver = stitcher_->getFOVVer(); // 单位: degree
-        response->success = true;
-        response->focal = cam.focal;
-        response->aspect = cam.aspect;
-        response->ppx = cam.ppx;
-        response->ppy = cam.ppy;
-        for (int i = 0; i < 9; ++i) response->rotate_matrix[i] = cam.R.at<float>(i / 3, i % 3);
-        for (int i = 0; i < 3; ++i) response->transport_matrix[i] = cam.t.at<double>(i, 0);
-        cv::Mat K = cam.K();
-        for (int i = 0; i < 9; ++i) response->k_matrix[i] = K.at<double>(i / 3, i % 3);
-        
-        RCLCPP_INFO(this->get_logger(), "成功获取相机 %s (索引 %d) 的参数", cam_name.c_str(), cam_idx);
-    }
 };
 
 int main(int argc, char * argv[]) {

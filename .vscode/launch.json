@@ -87,10 +87,18 @@
         
         // ============ Python 调试配置 ============
         {
-            "name": "ROS2: Assemble Launch",
+            "name": "ROS2: Assemble_track_offline_launch",
             "type": "ros2",
             "request": "launch",
-            "target": "/home/tl/RV/src/marnav_vis/launch/Assemble_JH_launch.py",
+            "target": "/home/tl/RV/src/marnav_vis/launch/Assemble_track_offline_launch.py",
+            "justMyCode": false,
+            "subProcess": true
+        },
+        {
+            "name": "ROS2: Assemble_track_realtime_launch",
+            "type": "ros2",
+            "request": "launch",
+            "target": "/home/tl/RV/src/marnav_vis/launch/Assemble_track_realtime_launch.py",
             "justMyCode": false,
             "subProcess": true
         },

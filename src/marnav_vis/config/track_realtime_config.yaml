@@ -2,23 +2,44 @@
 # 配置说明：请根据实际设备参数修改以下配置
 
 camera:
-  dataset_mode: False # 不是数据集模式，而是实时模式，需要获取实际的相机内参
   camera_publish_fps: 25
   width_height: [1280, 720]  # 使用数组格式便于ROS2传递，這個尺寸要和當前的相機內參一致，否則AIS無法正常融合
-  cameras: # 相机配置列表（支持动态增减相机数量）
+  angle_between_cameras: 60 # 相机之间的角度差
+  camera_parameters: # 相机配置列表（支持动态增减相机数量）
     - camera_name: "camera_0"           # 相机名称（用于映射）
-      topic_name: "/camera_image_topic_0"   # 相机0的话题名
-      camera_index: 0                       # 相机索引
+      topic_name: "/rtsp_image_0"   # 相机0的话题名
+      camera_index: 0    # 相机索引
+      camera_matrix: # 不是数据集模式，而是实时模式，需要获取实际的相机内参
+        fov_hor: 105.0
+        fov_ver: 57.0
+        fx: 836.91715
+        fy: 835.47287
+        u0: 661.38482
+        v0: 359.12276
     - camera_name: "camera_1"           # 相机名称（用于映射）
-      topic_name: "/camera_image_topic_1"   # 相机1的话题名
+      topic_name: "/rtsp_image_1"   # 相机1的话题名
       camera_index: 1                       # 相机索引
+      camera_matrix:
+        fov_hor: 105.0
+        fov_ver: 57.0
+        fx: 852.20555
+        fy: 847.98578
+        u0: 652.7846
+        v0: 358.86147
     - camera_name: "camera_2"           # 相机名称（用于映射）
-      topic_name: "/camera_image_topic_2"   # 相机2的话题名 camera_image_topic_2
+      topic_name: "/rtsp_image_2"   # 相机2的话题名 camera_image_topic_2
       camera_index: 2                       # 相机索引
+      camera_matrix:
+        fov_hor: 105.0
+        fov_ver: 57.0
+        fx: 844.84995
+        fy: 850.25326
+        u0: 646.94293
+        v0: 358.64708
       
 gnss:
   gnss_publish_rate: 5.0
-  gnss_pub_topic: "/gnss_pub_topic"
+  gnss_pub_topic: "/gnss_topic"
   gnss_yaw_bias: 90 # 单位度，表示GNSS的yaw角相对主相机朝向的偏差
   gnss_pitch_bias: 0 # 单位度，表示GNSS的pitch角相对于相机朝向的偏差
   comm_type: "udp" # 串口通信: udp,tcp,serial
