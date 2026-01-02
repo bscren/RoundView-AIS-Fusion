@@ -76,6 +76,10 @@ devices:
     bind_address: "0.0.0.0"        # 绑定地址（0.0.0.0表示监听所有网卡）
     expected_frequency: 5          # 期望接收频率（Hz）
     quality_threshold: 1           # 定位质量阈值（>=1为有效）
+    bias_yaw: 90                   # 安装导致的GNSS偏航角偏差（度）
+    bias_pitch: 0                  # 安装导致的GNSS俯仰角偏差（度）
+    bias_roll: 0                   # 安装导致的GNSS横滚角偏差（度）
+
 
 # ============ 存储配置 ============
 storage:

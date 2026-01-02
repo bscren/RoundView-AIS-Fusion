@@ -235,7 +235,7 @@ public:
         
         // 初始化订阅器（配置QoS策略以匹配发布者）
         // 图像话题通常使用 BEST_EFFORT 可靠性策略
-        auto image_qos = rclcpp::QoS(rclcpp::KeepLast(10))
+        auto image_qos = rclcpp::QoS(rclcpp::KeepLast(1))
             .reliability(rclcpp::ReliabilityPolicy::BestEffort)
             .durability(rclcpp::DurabilityPolicy::Volatile);
         
@@ -565,6 +565,7 @@ private:
                                   static_cast<int64_t>(msg.timestamp.nanosec);
                 vt.ais_or_not = msg.ais;
                 vt.mmsi = msg.mmsi;
+                vt.ship_type = msg.ship_type;
                 vt.sog = msg.sog;
                 vt.cog = msg.cog;
                 vt.latitude = msg.lat;
@@ -743,7 +744,8 @@ private:
         root["trajectories"] = json::array();
         for (const auto& traj : trajectory_boxes) {
             root["trajectories"].push_back({
-                {"class_name", traj.class_name},
+                {"message_type", traj.message_type},
+                {"ship_type", traj.ship_type},
                 {"x1", traj.top_left.x},
                 {"y1", traj.top_left.y},
                 {"x2", traj.bottom_right.x},

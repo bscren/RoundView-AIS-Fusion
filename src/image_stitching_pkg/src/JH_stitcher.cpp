@@ -88,8 +88,8 @@ bool JHStitcher::processFirstGroupImpl(const std::vector<cv::Mat>& images) {
         // 特征点检测
         std::vector<ImageFeatures> features(num_images);
         std::vector<Size> images_sizes(num_images);
-        // 使用USRF特征检测器
-        // Ptr<SURF> featurefinder = SURF::create();
+        // 使用SURF特征检测器
+        // Ptr<cv::xfeatures2d::SURF> featurefinder = cv::xfeatures2d::SURF::create();
         // cout<< "开始特征检测" << endl;
         // 使用AKAZE特征检测器
         Ptr<AKAZE> featurefinder = AKAZE::create();
@@ -258,6 +258,13 @@ bool JHStitcher::processFirstGroupImpl(const std::vector<cv::Mat>& images) {
             {
                 four_corners_warp[i][j] = warper->warpPoint(four_corners[j], K, cameras[i].R); //扭曲图像左角点
             }
+            // ======================== DEBUG 打印扭曲后的四个角点 =======================
+            cout<<"four_corners_warp[" << i << "]: ";
+            for (const auto& pt : four_corners_warp[i]) {
+                cout << "(" << pt.x << "," << pt.y << ") ";
+            }
+            cout << endl;
+            // ======================== DEBUG 打印扭曲后的四个角点 =======================
         }
         
         // cout<<"检测左上角合法性" << endl;
@@ -609,14 +616,15 @@ void JHStitcher::CalibTrajInPano(
 
             // 8. 构建TrajectoryBoxInfo对象并保存
             TrajectoryBoxInfo traj_box;
-            traj_box.top_left = top_left;
-            traj_box.bottom_right = bottom_right;
-            traj_box.class_name = visiable_tra.ais_or_not ? "AIS" : "Visual";  // 根据AIS标志设置类别
-            traj_box.mmsi = visiable_tra.mmsi;
-            traj_box.sog = visiable_tra.sog;
-            traj_box.cog = visiable_tra.cog;
-            traj_box.lat = visiable_tra.latitude;
-            traj_box.lon = visiable_tra.longitude;
+            traj_box.top_left = top_left; // 左上角坐标
+            traj_box.bottom_right = bottom_right; // 右下角坐标
+            traj_box.message_type = visiable_tra.ais_or_not ? "AIS" : "Visual";  // 消息类型，AIS或Visual
+            traj_box.ship_type = visiable_tra.ship_type; // 船只类型
+            traj_box.mmsi = visiable_tra.mmsi; // 船只编号
+            traj_box.sog = visiable_tra.sog; // 船只速度
+            traj_box.cog = visiable_tra.cog; // 船只航向
+            traj_box.lat = visiable_tra.latitude; // 船只纬度
+            traj_box.lon = visiable_tra.longitude; // 船只经度
 
             trajectory_boxes_.push_back(traj_box);
 
@@ -639,6 +647,14 @@ void JHStitcher::CalibTrajInPano(
                 // 从检测框左下角开始，依次往下绘制信息
                 int text_x = top_left.x;
                 int text_y = bottom_right.y + line_height;  // 从左下角开始，往下偏移一行
+                
+                // 绘制船只类型信息（如果有效）
+                if (!visiable_tra.ship_type.empty()) {
+                    std::string label = "Ship Type:" + visiable_tra.ship_type;
+                    cv::putText(pano, label, cv::Point(text_x, text_y),
+                               font_face, font_scale, color, font_thickness);
+                    text_y += line_height;  // 下一行
+                }
                 
                 // 绘制MMSI信息（如果有效）
                 if (visiable_tra.mmsi > 0) {
@@ -1025,11 +1041,11 @@ bool JHStitcher::checkBALegitimacy(std::vector<cv::detail::CameraParams>& camera
 // 检查各图片的左上角点位置是否合法
 bool JHStitcher::checkTopLeftPointsLegitimacy(const vector<vector<Point2f>>& four_corners_warp) {
     // 检测左角点（左上角点）是否符合分布要求
-    // 2. 检查x坐标是否递减分布
+    // 2. 检查x坐标是否递增分布
     for (size_t i = 1; i < four_corners_warp.size(); ++i) {
-        if (four_corners_warp[i][0].x >= four_corners_warp[i-1][0].x) {
+        if (four_corners_warp[i][0].x <= four_corners_warp[i-1][0].x) {
             std::cerr << "错误：图像 " << i-1 << " 和 " << i << " 的x坐标未递增（" 
-                    << four_corners_warp[i-1][0].x << " >= " << four_corners_warp[i][0].x << "）" << std::endl;
+                    << four_corners_warp[i][0].x << " <= " << four_corners_warp[i-1][0].x << "）" << std::endl;
             return false;
         }
     }

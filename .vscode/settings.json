@@ -2,46 +2,66 @@
     "C_Cpp.intelliSenseEngine": "disabled",
     "C_Cpp.autocomplete": "disabled",
     "C_Cpp.errorSquiggles": "disabled",
-    "clangd.path": "/usr/bin/clangd-14",
-    "clangd.arguments": [
-        "--compile-commands-dir=${workspaceFolder}",
-        "--background-index",
-        "--query-driver=/usr/bin/g++",
-        "--header-insertion=iwyu",
-        "--completion-style=detailed"
-    ],
     "files.associations": {
         "*.hpp": "cpp",
         "*.h": "cpp"
     },
     "ROS2.distro": "humble",
-    "ros.distro": "humble",
-    "python.autoComplete.extraPaths": [
-        "/home/tl/RV/install/yolo_detect/lib/python3.10/site-packages",
-        "/home/tl/RV/install/webcamcalib/lib/python3.10/site-packages",
-        "/home/tl/RV/install/mycustface/local/lib/python3.10/dist-packages",
-        "/home/tl/RV/build/marnav_vis",
-        "/home/tl/RV/install/marnav_vis/lib/python3.10/site-packages",
-        "/home/tl/RV/install/marnav_interfaces/local/lib/python3.10/dist-packages",
-        "/home/tl/RV/install/detect_interfaces/lib/python3.10/site-packages",
-        "/home/tl/RV/install/camera_calibration/lib/python3.10/site-packages",
-        "/home/tl/RV/install/ais_tools/lib/python3.10/site-packages",
-        "/home/tl/RV/install/ais_interfaces/local/lib/python3.10/dist-packages",
+    "python.analysis.extraPaths": [
+        "/home/tl/RV/src/marnav_vis",
+        "/home/tl/RV/src/marnav_vis/utils_JH",
+        "/home/tl/RV/src/marnav_vis/detection_yolox",
+        "/home/tl/RV/src/marnav_vis/deep_sort",
+        "/home/tl/RV/src/marnav_vis/utils",
+        "/home/tl/RV/src/yolo_detect/yolo_detect",
+        "/home/tl/RV/src/webcamcalib",
+        "/home/tl/RV/src/mycustface",
+        "/home/tl/RV/src/marnav_interfaces",
+        "/home/tl/RV/src/detect_interfaces",
+        "/home/tl/RV/src/ais_tools",
+        "/home/tl/RV/src/ais_interfaces",
         "/opt/ros/humble/lib/python3.10/site-packages",
         "/opt/ros/humble/local/lib/python3.10/dist-packages"
     ],
-    "python.analysis.extraPaths": [
-        "/home/tl/RV/install/yolo_detect/lib/python3.10/site-packages",
-        "/home/tl/RV/install/webcamcalib/lib/python3.10/site-packages",
-        "/home/tl/RV/install/mycustface/local/lib/python3.10/dist-packages",
-        "/home/tl/RV/build/marnav_vis",
-        "/home/tl/RV/install/marnav_vis/lib/python3.10/site-packages",
-        "/home/tl/RV/install/marnav_interfaces/local/lib/python3.10/dist-packages",
-        "/home/tl/RV/install/detect_interfaces/lib/python3.10/site-packages",
-        "/home/tl/RV/install/camera_calibration/lib/python3.10/site-packages",
-        "/home/tl/RV/install/ais_tools/lib/python3.10/site-packages",
-        "/home/tl/RV/install/ais_interfaces/local/lib/python3.10/dist-packages",
+    "python.analysis.ignore": [
+        "**/install/**",
+        "**/build/**",
+        "**/log/**"
+    ],
+    "python.analysis.indexing": true,
+    "python.analysis.useLibraryCodeForTypes": false,
+    "python.analysis.diagnosticMode": "workspace",
+    "python.languageServer": "None",
+    "files.exclude": {
+        "**/install": true,
+        "**/build": true,
+        "**/log": true
+    },
+    "search.exclude": {
+        "**/install": true,
+        "**/build": true,
+        "**/log": true
+    },
+    "files.watcherExclude": {
+        "**/install/**": true,
+        "**/build/**": true,
+        "**/log/**": true
+    },
+    "python.autoComplete.extraPaths": [
+        "/home/tl/RV/src/marnav_vis",
+        "/home/tl/RV/src/marnav_vis/utils_JH",
+        "/home/tl/RV/src/marnav_vis/detection_yolox",
+        "/home/tl/RV/src/marnav_vis/deep_sort",
+        "/home/tl/RV/src/marnav_vis/utils",
+        "/home/tl/RV/src/yolo_detect/yolo_detect",
+        "/home/tl/RV/src/webcamcalib",
+        "/home/tl/RV/src/mycustface",
+        "/home/tl/RV/src/marnav_interfaces",
+        "/home/tl/RV/src/detect_interfaces",
+        "/home/tl/RV/src/ais_tools",
+        "/home/tl/RV/src/ais_interfaces",
         "/opt/ros/humble/lib/python3.10/site-packages",
         "/opt/ros/humble/local/lib/python3.10/dist-packages"
-    ]
+    ],
+    "ros.distro": "humble"
 }

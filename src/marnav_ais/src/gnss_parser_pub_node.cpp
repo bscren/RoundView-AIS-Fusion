@@ -211,7 +211,8 @@ private:
 class GNSSParserNode : public rclcpp::Node {
 public:
   GNSSParserNode()
-      : Node("gnss_parser_node"), running_(false) {
+      : Node("gnss_parser_node"), running_(false),
+      gnss_yaw_bias_(90.0), gnss_pitch_bias_(0.0), gnss_roll_bias_(0.0) {
 
     // 获取配置文件路径参数
     declare_parameter<std::string>("config_file", "");
@@ -249,7 +250,8 @@ public:
     int udp_port = 8010;
     double publish_hz = 5.0;
     std::string gnss_pub_topic = "gnss_data";
-    
+
+
     try {
       YAML::Node config = YAML::LoadFile(config_file_path);
       
@@ -258,6 +260,17 @@ public:
       } else {
         const YAML::Node& gnss_config = config["gnss"];
         
+        // 读取GNSS偏差
+        if (gnss_config["gnss_yaw_bias"]) {
+          gnss_yaw_bias_ = gnss_config["gnss_yaw_bias"].as<double>();
+        }
+        if (gnss_config["gnss_pitch_bias"]) {
+          gnss_pitch_bias_ = gnss_config["gnss_pitch_bias"].as<double>();
+        }
+        if (gnss_config["gnss_roll_bias"]) {
+          gnss_roll_bias_ = gnss_config["gnss_roll_bias"].as<double>();
+        }
+
         // 读取通信类型
         if (gnss_config["comm_type"]) {
           comm_type = gnss_config["comm_type"].as<std::string>();
@@ -441,6 +454,17 @@ private:
     bool ok_alt = parse_double(fields[31], alt);
     bool ok_heading = parse_double(fields[19], heading);
     bool ok_pitch = parse_double(fields[20], pitch);
+    // 添加GNSS偏差修正，yaw角（0~360度）需要考虑超过360度的情况，而pitch角（-90~90度）不需要
+    if (ok_heading) {
+      heading += gnss_yaw_bias_;
+      if (heading > 360) {
+        heading -= 360;
+      } else if (heading < 0) {
+        heading += 360;
+      }
+    }if (ok_pitch) {
+      pitch += gnss_pitch_bias_;
+    }
 
     if (!ok_lat || !ok_lon) {
       RCLCPP_DEBUG(get_logger(), "AGRICA 位置字段无效");
@@ -476,6 +500,11 @@ private:
   }
 
 private:
+  // ========== 类的私有成员变量 ==========
+  double gnss_yaw_bias_;    
+  double gnss_pitch_bias_;
+  double gnss_roll_bias_;   
+
   std::unique_ptr<CommInterface> comm_interface_;
   std::thread comm_thread_;
   std::atomic<bool> running_;

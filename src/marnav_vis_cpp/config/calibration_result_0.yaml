@@ -1,0 +1,45 @@
+calibration_date: '2025-12-15 21:55:46'
+lens_type: fisheye
+image_resolution:
+  width: 1280
+  height: 720
+camera_matrix:
+  rows: 3
+  cols: 3
+  data:
+  - 826.7103994350479
+  - 0.0
+  - 662.713457455057
+  - 0.0
+  - 826.3601631131817
+  - 368.4709861379807
+  - 0.0
+  - 0.0
+  - 1.0
+distortion_coefficients:
+  count: 4
+  data:
+  - -0.08769532277781175
+  - -0.11060163136644942
+  - 0.1075732223095202
+  - -0.05284128496107258
+field_of_view:
+  horizontal: 101.48511413866301
+  vertical: 51.579745365734304
+  diagonal: 121.24773773056718
+reprojection_error:
+  rms: 1.5999587079115796
+  unit: pixels
+calibration_parameters:
+  chessboard_size:
+    columns: 11
+    rows: 8
+  square_size_mm: 30.0
+  used_images_count: 96
+  total_images_count: 97
+notes:
+- "HFOV: Horizontal Field of View (\u6C34\u5E73\u89C6\u573A\u89D2)"
+- "VFOV: Vertical Field of View (\u5782\u76F4\u89C6\u573A\u89D2)"
+- "DFOV: Diagonal Field of View (\u5BF9\u89D2\u89C6\u573A\u89D2)"
+- RMS error < 1.0 is considered good for most applications
+- For fisheye cameras, error < 2.0 may be acceptable due to extreme distortion

@@ -85,6 +85,11 @@ class GNSSReceiver:
         self.last_valid_time = None
         self.last_timestamp = None
         
+        # 安装导致的GNSS偏航角、俯仰角、横滚角偏差（度）
+        self.bias_yaw = config.get('bias_yaw', 0) 
+        self.bias_pitch = config.get('bias_pitch', 0)
+        self.bias_roll = config.get('bias_roll', 0)
+
         # 期望接收频率
         self.expected_frequency = config.get('expected_frequency', 5)  # Hz
         self.expected_interval = 1.0 / self.expected_frequency  # 秒
@@ -334,19 +339,32 @@ class GNSSReceiver:
                 logger.debug(f"位置信息解析失败: {e}")
                 latitude = longitude = altitude = None
             
-            # 姿态信息（航向/俯仰/横滚）
+            # 姿态信息（航向(0~360度)/俯仰(-90~90度)/横滚(-180~180度)）
             try:
                 heading = float(data_fields[19]) if data_fields[19] else None
+                # 添加修正时要考虑超过360度的情况
+                if heading is not None:
+                    heading += self.bias_yaw
+                    if heading > 360:
+                        heading -= 360
+                    elif heading < 0:
+                        heading += 360
             except Exception:
                 heading = None
             
             try:
                 pitch = float(data_fields[20]) if data_fields[20] else None
+                # 添加修正时不考虑超过-90度或90度的情况
+                if pitch is not None:
+                    pitch += self.bias_pitch
             except Exception:
                 pitch = None
             
             try:
                 roll = float(data_fields[21]) if data_fields[21] else None
+                # 添加修正时不考虑超过-180度或180度的情况
+                if roll is not None:
+                    roll += self.bias_roll
             except Exception:
                 roll = None
             
@@ -676,10 +694,14 @@ if __name__ == "__main__":
     
     # 测试配置
     test_config = {
-        'udp_port': 8010,
-        'bind_address': '0.0.0.0',
-        'expected_frequency': 5,
-        'quality_threshold': 1
+        'enabled': True,
+        'udp_port': 8010,               # UDP监听端口
+        'bind_address': '0.0.0.0',        # 绑定地址（0.0.0.0表示监听所有网卡）
+        'expected_frequency': 5,         # 期望接收频率（Hz）
+        'quality_threshold': 1,          # 定位质量阈值（>=1为有效）
+        'bias_yaw': 90,           # 安装导致的GNSS偏航角偏差（度）
+        'bias_pitch': 0,             # 安装导致的GNSS俯仰角偏差（度）
+        'bias_roll': 0,                # 安装导致的GNSS横滚角偏差（度）
     }
     
     receiver = GNSSReceiver(test_config)

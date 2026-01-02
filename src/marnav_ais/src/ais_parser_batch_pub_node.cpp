@@ -284,7 +284,7 @@ public:
         std::string udp_ip = "0.0.0.0";
         int udp_port = 1800;
         ais_batch_pub_topic_ = "/ais_batch_topic_realtime";
-        
+
         try {
             YAML::Node config = YAML::LoadFile(config_file_path);
             
@@ -296,6 +296,7 @@ public:
                 // 读取通信类型
                 if (ais_config["comm_type"]) {
                     comm_type = ais_config["comm_type"].as<std::string>();
+                    RCLCPP_INFO(get_logger(), "读取的AIS通信类型: %s", comm_type.c_str());
                 }
                 
                 // 读取UDP参数

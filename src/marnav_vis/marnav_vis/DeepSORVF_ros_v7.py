@@ -36,7 +36,7 @@ from marnav_vis.config_loader import ConfigLoader
 # 由v4的多线程改为v5的多进程，每个进程独立处理一帧: 包含AIS, VIS, FUS, DRAW
 
 # ------------------------------------------------------
-def multi_proc_worker(input_queue, output_queue, im_shape, t, max_dis, skip_interval = 1):
+def multi_proc_worker(input_queue, output_queue, im_shape, t, max_dis, skip_interval = 1, camera_type = "normal"):
     """
     每个进程独立处理一帧: 包含AIS, VIS, FUS, DRAW
      1. 从输入队列获取任务
@@ -62,12 +62,15 @@ def multi_proc_worker(input_queue, output_queue, im_shape, t, max_dis, skip_inte
                         'fov_hor': resp.fov_hor,
                         'fov_ver': resp.fov_ver,
                         'focal': resp.focal,
-                        'aspect': resp.aspect,
-                        'ppx': resp.ppx,
-                        'ppy': resp.ppy,
-                        'R': list(resp.rotate_matrix),
-                        't': list(resp.transport_matrix),
-                        'K': list(resp.k_matrix)
+                        'fx': resp.fx,
+                        'fy': resp.fy,
+                        'u0': resp.u0,
+                        'v0': resp.v0,
+                        # 下列限定于鱼眼相机，普通相机不需要
+                        'k1': resp.k1,
+                        'k2': resp.k2,
+                        'k3': resp.k3,
+                        'k4': resp.k4,
                     }
 
 
@@ -115,7 +118,7 @@ def multi_proc_worker(input_queue, output_queue, im_shape, t, max_dis, skip_inte
             if process_ais_vis_fus:
                 # print(f"process_ais_vis_fus at timestamp {current_timestamp}, worker {cam_idx} processing task, pid={os.getpid()}")
                 # 1. AIS
-                AIS_vis, AIS_cur = aispro.process(ais_batch, camera_pos_para, current_timestamp)
+                AIS_vis, AIS_cur = aispro.process(ais_batch, camera_pos_para, current_timestamp, camera_type)
                 # 2. VIS
                 Vis_tra, Vis_cur = vispro.feedCap(cv_image, AIS_vis, bin_inf, current_timestamp)
                 # 3. FUS
@@ -156,57 +159,6 @@ def multi_proc_worker(input_queue, output_queue, im_shape, t, max_dis, skip_inte
 
 
 
-# 作为客户端请求相机参数（带重试机制）
-def get_camera_params_client(node, camera_name, max_retries=20, retry_interval=2.0):
-    """
-    请求相机参数，如果首次处理尚未完成则重试
-    
-    参数:
-        node: ROS 2节点
-        camera_name: 相机名称
-        max_retries: 最大重试次数
-        retry_interval: 重试间隔（秒）
-    """
-    client = node.create_client(GetCameraParams, '/get_camera_params_service')
-    
-    # 等待服务可用
-    timeout_sec = 10.0
-    if not client.wait_for_service(timeout_sec=timeout_sec):
-        node.get_logger().error(f'已经过了{timeout_sec}秒，服务 /get_camera_params_service 不可用')
-        return None
-    
-    # 重试机制：等待首次处理完成
-    for attempt in range(max_retries):
-        request = GetCameraParams.Request()
-        request.camera_name = camera_name
-        future = client.call_async(request)
-        rclpy.spin_until_future_complete(node, future, timeout_sec=5.0)
-        
-        if future.result() is not None:
-            resp = future.result()
-            if resp.success:
-                node.get_logger().info(f'✅ 获取相机参数成功: {camera_name} (尝试 {attempt + 1}/{max_retries})')
-                return resp
-            else:
-                # 首次处理可能尚未完成，等待后重试
-                if attempt < max_retries - 1:
-                    node.get_logger().warn(
-                        f'⏳ 获取相机 {camera_name} 参数失败 (尝试 {attempt + 1}/{max_retries})，'
-                        f'可能首次处理尚未完成，等待 {retry_interval} 秒后重试...'
-                    )
-                    time.sleep(retry_interval)
-                else:
-                    node.get_logger().error(
-                        f'❌ 获取相机 {camera_name} 的参数失败，已重试 {max_retries} 次。'
-                        f'请检查图像拼接节点是否已收到图像并完成首次处理。'
-                    )
-        else:
-            node.get_logger().warn(f'服务调用超时 (尝试 {attempt + 1}/{max_retries})')
-            if attempt < max_retries - 1:
-                time.sleep(retry_interval)
-    
-    return None
-
 
 
 class AisVisNode(Node):
@@ -242,8 +194,12 @@ class AisVisNode(Node):
         self.im_shape = tuple(camera_config.get('width_height', [2560, 1440]))
         self.camera_parameters = camera_config.get('camera_parameters', [])
         self.camera_topics = [cam['topic_name'] for cam in self.camera_parameters]
-        self.camera_matrix = [cam['camera_matrix'] for cam in self.camera_parameters]  
-              
+        self.camera_matrixs = [cam['camera_matrix'] for cam in self.camera_parameters]  
+        self.camera_type = deepsorvf_config.get('camera_type', "normal")
+        if self.camera_type == 'fisheye':
+            self.distortion_coefficients = [cam['distortion_coefficients'] for cam in self.camera_parameters]
+        else:
+            self.distortion_coefficients = None # 普通相机不需要畸变系数
         # 构建相机topic到标准名称的映射（与C++拼接节点保持一致）
         self.camera_name_mapping = {}
         for cam in self.camera_parameters:
@@ -262,6 +218,7 @@ class AisVisNode(Node):
         self.sync_queue_size = deepsorvf_config.get('sync_queue_size', 10)
         self.sync_slop = deepsorvf_config.get('sync_slop', 0.1)
         self.skip_interval = deepsorvf_config.get('skip_interval', 1000)
+        self.camera_type = deepsorvf_config.get('camera_type', "normal")
         
         # 打印配置信息
         self.get_logger().info("="*60)
@@ -302,7 +259,7 @@ class AisVisNode(Node):
         self.workers = [
             Process(
                 target=multi_proc_worker,
-                args=(self.mp_input_queues[i], self.mp_output_queues[i], self.im_shape, self.t, self.max_dis, self.skip_interval)
+                args=(self.mp_input_queues[i], self.mp_output_queues[i], self.im_shape, self.t, self.max_dis, self.skip_interval, self.camera_type)
             )
             for i in range(self.num_cameras)
         ]
@@ -432,20 +389,41 @@ class AisVisNode(Node):
             # 计算水平朝向（中间相机不变，左右相机调整±N度,N为相机之间的夹角）
             horizontal_orientation = (msg.horizontal_orientation + (idx - 1) * self.angle_between_cameras) % 360
             # 开始混合赋值
-            self.camera_pos_para[idx] = {
-                "longitude": msg.longitude,
-                "latitude": msg.latitude,
-                "horizontal_orientation": horizontal_orientation,  # 每个相机的水平朝向由yaml文件配置
-                "vertical_orientation": msg.vertical_orientation,
-                "camera_height": msg.camera_height,
+            if self.camera_type == 'fisheye':
+                self.camera_pos_para[idx] = {
+                    "longitude": msg.longitude,
+                    "latitude": msg.latitude,
+                    "horizontal_orientation": horizontal_orientation,  # 每个相机的水平朝向由yaml文件配置
+                    "vertical_orientation": msg.vertical_orientation,
+                    "camera_height": msg.camera_height,
 
-                'fov_hor': self.camera_matrix[idx]['fov_hor'], # 数据集模式下这参数是固定的
-                'fov_ver': self.camera_matrix[idx]['fov_ver'],
-                'fx': self.camera_matrix[idx]['fx'],
-                'fy': self.camera_matrix[idx]['fy'],
-                'u0': self.camera_matrix[idx]['u0'],
-                'v0': self.camera_matrix[idx]['v0'],
-            }
+                    'fov_hor': self.camera_matrixs[idx]['fov_hor'], # 数据集模式下这参数是固定的
+                    'fov_ver': self.camera_matrixs[idx]['fov_ver'],
+                    'fx': self.camera_matrixs[idx]['fx'],
+                    'fy': self.camera_matrixs[idx]['fy'],
+                    'u0': self.camera_matrixs[idx]['u0'],
+                    'v0': self.camera_matrixs[idx]['v0'],
+
+                    'k1': self.distortion_coefficients[idx]['k1'],
+                    'k2': self.distortion_coefficients[idx]['k2'],
+                    'k3': self.distortion_coefficients[idx]['k3'],
+                    'k4': self.distortion_coefficients[idx]['k4'],
+                }
+            elif self.camera_type == 'normal':
+                self.camera_pos_para[idx] = {
+                    "longitude": msg.longitude,
+                    "latitude": msg.latitude,
+                    "horizontal_orientation": horizontal_orientation,  # 每个相机的水平朝向由yaml文件配置
+                    "vertical_orientation": msg.vertical_orientation,
+                    "camera_height": msg.camera_height,
+
+                    'fov_hor': self.camera_matrixs[idx]['fov_hor'], # 数据集模式下这参数是固定的
+                    'fov_ver': self.camera_matrixs[idx]['fov_ver'],
+                    'fx': self.camera_matrixs[idx]['fx'],
+                    'fy': self.camera_matrixs[idx]['fy'],
+                    'u0': self.camera_matrixs[idx]['u0'],
+                    'v0': self.camera_matrixs[idx]['v0'],
+                }
             
 
     def refresh_window_callback(self):
@@ -533,7 +511,7 @@ class AisVisNode(Node):
                     # 使用映射后的相机名称（与C++拼接节点保持一致）
                     topic_name = self.camera_topics[cam_idx]
                     # =================================================== DEBUG ===================================================
-                    msg.camera_name = self.camera_name_mapping.get(topic_name, topic_name)
+                    msg.camera_name = self.camera_name_mapping.get(topic_name, topic_name) # 第一个topic_name作为键名，第二个是若没有对应的键值对，则返回原值
                     # =================================================== DEBUG ===================================================
                     # 将毫秒时间戳转换为 ROS Time (sec + nanosec)
                     timestamp_ms = int(tra.get('timestamp', 0))
@@ -543,6 +521,11 @@ class AisVisNode(Node):
                     # AIS相关字段，如果不存在则使用默认值
                     msg.ais = 0 if pd.isna(tra.get('ais')) or tra.get('ais') is None else int(tra['ais'])
                     
+                    # 船只类型
+                    # =================================================== DEBUG ===================================================
+                    msg.ship_type = 'cargo ship' # 如果船只类型为空，则默认为cargo ship
+                    # =================================================== DEBUG ===================================================
+
                     # mmsi 必须是无符号整数 [0, 4294967295]，负数转为0
                     mmsi_value = tra.get('mmsi', 0)
                     if pd.isna(mmsi_value) or mmsi_value < 0:

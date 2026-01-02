@@ -1,4 +1,4 @@
-# 编写脚本,伪装gnss设备，以指定帧率发布相机参数，包括：
+# 编写脚本,伪装gnss设备，以指定帧率发布数据集中的相机参数，包括：
 #       Lon	        Lat	    Horizontal	Vertical	Camera Height   //	Horizontal FoV	    Vertical FoV	fx	        fy	         u0	        v0
 # 举例：114.32583	30.60139	7	        -1	        20	         //       55	            30.94	   2391.26	    2446.89	    1305.04	    855.214
 

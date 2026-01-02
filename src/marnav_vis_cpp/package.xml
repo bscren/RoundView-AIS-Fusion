@@ -1,0 +1,35 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>marnav_vis_cpp</name>
+  <version>0.0.0</version>
+  <description>C++ implementation of DeepSORVF tracking node for multi-camera AIS+VIS+FUS processing</description>
+  <maintainer email="user@example.com">user</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <!-- ROS 2核心依赖 -->
+  <depend>rclcpp</depend>
+  <depend>sensor_msgs</depend>
+  <depend>cv_bridge</depend>
+  <depend>message_filters</depend>
+  
+  <!-- 工具依赖 -->
+  <depend>ament_index_cpp</depend>
+  <depend>yaml-cpp</depend>
+  
+  <!-- 自定义消息包依赖 -->
+  <depend>marnav_interfaces</depend>
+
+  <!-- OpenCV (通常在系统中安装，不需要通过ROS2包管理器) -->
+  <!-- 但可以在CMakeLists.txt中通过find_package查找 -->
+
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>
+

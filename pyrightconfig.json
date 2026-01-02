@@ -1,0 +1,30 @@
+{
+    "include": [
+        "src"
+    ],
+    "exclude": [
+        "**/install",
+        "**/build",
+        "**/log",
+        "**/__pycache__",
+        "**/.pytest_cache"
+    ],
+    "extraPaths": [
+        "src/marnav_vis",
+        "src/marnav_vis/utils_JH",
+        "src/marnav_vis/detection_yolox",
+        "src/marnav_vis/deep_sort",
+        "src/marnav_vis/utils"
+    ],
+    "ignore": [
+        "**/install",
+        "**/build",
+        "**/log"
+    ],
+    "pythonVersion": "3.10",
+    "typeCheckingMode": "off",
+    "useLibraryCodeForTypes": false,
+    "reportMissingImports": false,
+    "reportMissingTypeStubs": false
+}
+

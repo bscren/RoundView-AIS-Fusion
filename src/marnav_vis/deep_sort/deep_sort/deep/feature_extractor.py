@@ -3,8 +3,11 @@ import torchvision.transforms as transforms
 import numpy as np
 import cv2
 import logging
-
+# 作者的原码：
 from .model import Net
+
+# 调试时修改为：
+# from model import Net
 
 '''
 特征提取器：
@@ -57,9 +60,21 @@ class Extractor(object):
         return features.cpu().numpy()
 
 
-if __name__ == '__main__':
+# 作者的原码：
+# if __name__ == '__main__':
     img = cv2.imread("demo.jpg")[:,:,(2,1,0)]
     extr = Extractor("checkpoint/ckpt.t7")
     feature = extr(img)
     print(feature.shape)
 
+# 调试时为了防止报错，修改为：
+# if __name__ == '__main__':
+#     img = cv2.imread("/home/tl/RV/src/marnav_vis/deep_sort/deep_sort/deep/demo.jpg")  # BGR
+#     if img is None:
+#         raise ValueError("demo.jpg not found or cannot be read!")
+#     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)  # 转为RGB
+#     if img.ndim == 2:  # 灰度图转3通道
+#         img = np.stack([img]*3, axis=-1)
+#     extr = Extractor("/home/tl/RV/src/marnav_vis/deep_sort/deep_sort/deep/checkpoint/ckpt.t7")
+#     feature = extr([img])  # 注意要用list
+#     print(feature.shape)

@@ -44,7 +44,7 @@ def getDegree(latA, lonA, latB, lonB):
     brng = (brng + 360) % 360
     return brng
 
-def visual_transform(lon_v, lat_v, camera_pos_para, shape):
+def visual_transform(lon_v, lat_v, camera_pos_para, shape, camera_type):
     '''
     功能: 计算两点间方位角
     param: lon_v: 船舶经度
@@ -57,30 +57,15 @@ def visual_transform(lon_v, lat_v, camera_pos_para, shape):
     #                     "camera_height": msg.camera_height,
     #                     'fov_hor': resp.fov_hor,
     #                     'fov_ver': resp.fov_ver,
-    #                     'focal': resp.focal,
-    #                     'aspect': resp.aspect,
-    #                     'ppx': resp.ppx,
-    #                     'ppy': resp.ppy,
-    #                     'R': list(resp.rotate_matrix),
-    #                     't': list(resp.transport_matrix),
-    #                     'K': list(resp.k_matrix)
-    #                 }
-    # DEBUG 
-            # Lon	Lat	Horizontal Orientation	Vertical Orientation	Camera Height	Horizontal FoV	Vertical FoV	fx	fy	u0	v0
-            # 114.32583	30.60139	7	-1	20	55	30.94	2391.26	2446.89	1305.04	855.214
-            self.camera_pos_para[idx] = {
-                "longitude": 114.32583,
-                "latitude": 30.60139,
-                "horizontal_orientation": 7,
-                "vertical_orientation": -1,
-                "camera_height": 20,
-                'fov_hor': 55,
-                'fov_ver': 30.94,
-                'fx': 2391.26,
-                'fy': 2446.89,
-                'u0': 1305.04,
-                'v0': 855.214,
-            }
+    #                     'fx':resp.fx,
+    #                     'fy':resp.fy,
+    #                     'u0':resp.u0,
+    #                     'v0':resp.v0,
+    #                     限定于鱼眼相机，普通相机不需要
+    #                     'k1':resp.k1,
+    #                     'k2':resp.k2,
+    #                     'k3':resp.k3,
+    #                     'k4':resp.k4,
     param: shape: 图像尺寸
     返回值: 船舶在图像坐标系中的坐标
     '''
@@ -119,6 +104,7 @@ def visual_transform(lon_v, lat_v, camera_pos_para, shape):
         Angle_hor = Angle_hor + 360
     elif Angle_hor > 180:
         Angle_hor = Angle_hor - 360
+
     hor_rad = radians(Angle_hor)
     shv_rad = radians(-shoot_vdir)
     # 绕x轴旋转shv_rad度，纠正相机俯仰角为理想的0，和对应的船只坐标(X,Y,Z)
@@ -128,24 +114,38 @@ def visual_transform(lon_v, lat_v, camera_pos_para, shape):
     Z = Z_w/cos(shv_rad)+(Y_w-Z_w*tan(shv_rad))*sin(shv_rad)
     X = X_w
     Y = (Y_w-Z_w*tan(shv_rad))*cos(shv_rad)
-
-    # 内参K_matrix计算得到目标图像坐标(target_x, target_y)
-    target_x = int(f_x*X/Z+u0)
-    target_y = int(f_y*Y/Z+v0)
+    if camera_type == "normal":
+        # 内参K_matrix计算得到目标图像坐标(target_x, target_y)
+        target_x = int(f_x*X/Z+u0)
+        target_y = int(f_y*Y/Z+v0)
+        return target_x, target_y
 
     # 这是另一种算法，基于水平夹角和垂直夹角计算得到目标图像坐标(target_x, target_y)
     # 1.计算垂直夹角
-    #Angle_ver = 90 + shoot_vdir - math.degrees(math.atan(D_abs / height_cam))
-    #print(Angle_ver, shoot_vdir)
-    # 2.基于水平夹角和垂直夹角计算坐标
-    #target_x1 = int(width_pic // 2 + width_pic * Angle_hor / FOV_hor)
-    #target_y1 = int(height_pic // 2 + height_pic * Angle_ver / FOV_ver)
-    #print('new:')
-    #print(target_x2, target_y2)
-    #print('origion:')
-    # print(Angle_hor)
-    # print(target_x, target_y)
-    return target_x, target_y
+    # Angle_ver = 90 + shoot_vdir - math.degrees(math.atan(D_abs / height_cam))
+    # print(Angle_ver, shoot_vdir)
+    # # 2.基于水平夹角和垂直夹角计算坐标
+    # target_x2 = int(width_pic // 2 + width_pic * Angle_hor / FOV_hor)
+    # target_y2 = int(height_pic // 2 + height_pic * Angle_ver / FOV_ver)
+    # # print('new:')
+    # # print(target_x2, target_y2)
+    # # print('origion:')
+    # # print(Angle_hor,Angle_ver)
+    # # print(target_x_1, target_y_1)
+    # return target_x2, target_y2
+    elif camera_type == "fisheye":
+        # 使用鱼眼相机投影公式计算得到目标图像坐标(target_x, target_y)
+        K = np.array([[f_x, 0, u0], [0, f_y, v0], [0, 0, 1]])
+        D = np.array([camera_pos_para['k1'], camera_pos_para['k2'], camera_pos_para['k3'], camera_pos_para['k4']])
+        object_points = np.array(X,Y,Z).reshape(-1, 1, 3)
+        rvec = np.zeros((3, 1), dtype=np.float64)
+        tvec = np.zeros((3, 1), dtype=np.float64)
+        image_points, _ = cv2.fisheye.projectPoints(object_points, rvec, tvec, K, D)
+        target_x = int(image_points[0, 0, 0])
+        target_y = int(image_points[0, 0, 1])
+        return target_x, target_y
+        
+
 
 def data_filter(ais, camera_pos_para):
     '''
@@ -194,7 +194,7 @@ def data_filter(ais, camera_pos_para):
             return 'ais_del'
 
 
-def transform(AIS_current, AIS_vis, camera_pos_para, shape):
+def transform(AIS_current, AIS_vis, camera_pos_para, shape, camera_type):
     '''
     功能: 将AIS数据转换至图像坐标系
     :param AIS_current: 当前AIS数据，寿命较短
@@ -226,7 +226,7 @@ def transform(AIS_current, AIS_vis, camera_pos_para, shape):
         flag = data_filter(ais, camera_pos_para)
         # 情况1: 坐标转换
         if flag == 'transform':
-            x, y = visual_transform(ais['lon'], ais['lat'], camera_pos_para, shape)
+            x, y = visual_transform(ais['lon'], ais['lat'], camera_pos_para, shape, camera_type )
             ais['x'], ais['y'] = x, y
             AIS_visCurrent = AIS_visCurrent.append(ais, ignore_index=True)
         # 情况2: 数据删除
@@ -371,9 +371,9 @@ class AISPRO(object):
             ais_data = pd.DataFrame(columns=['mmsi','lon','lat','speed','course','heading','type','timestamp'])
         return ais_data
     
-    def data_tran(self, AIS_cur, AIS_vis, camera_pos_para, timestamp):
+    def data_tran(self, AIS_cur, AIS_vis, camera_pos_para, timestamp, camera_type):
         # 1.AIS数据坐标转换
-        AIS_vis, AIS_vis_cur = transform(AIS_cur, AIS_vis, camera_pos_para, self.im_shape)
+        AIS_vis, AIS_vis_cur = transform(AIS_cur, AIS_vis, camera_pos_para, self.im_shape, camera_type)
 
         # 2.存储处理后的AIS数据
         # self.AIS_pre = self.AIS_pre.append(self.AIS_cur, ignore_index=True)
@@ -386,7 +386,7 @@ class AISPRO(object):
                 timestamp//1000 - self.time_lim * 60)].index)
         return AIS_vis
 
-    def ais_pro(self, AIS_cur, AIS_las, AIS_vis, camera_pos_para, aisbatch_cache, timestamp):
+    def ais_pro(self, AIS_cur, AIS_las, AIS_vis, camera_pos_para, aisbatch_cache, timestamp, camera_type):
 
         # 1.1 节点实时发布模式下，直接跳转到这里:通过赋值给aisbatch_cache
         AIS_read = aisbatch_cache
@@ -398,28 +398,28 @@ class AISPRO(object):
         AIS_cur = data_pred(AIS_cur, AIS_read, AIS_las, timestamp)
             
         # 5.坐标转换
-        AIS_vis = self.data_tran(AIS_cur, AIS_vis, camera_pos_para, timestamp)
+        AIS_vis = self.data_tran(AIS_cur, AIS_vis, camera_pos_para, timestamp, camera_type)
         
         return AIS_vis, AIS_cur
 
-    def process(self, aisbatch_cache, camera_pos_para, timestamp,):
+    def process(self, aisbatch_cache, camera_pos_para, timestamp, camera_type = "normal"):
         # 当前时刻需要进行更新
         # 1.参数初始化
         AIS_cur, AIS_las, AIS_vis = self.initialization()
         
-        print(f"[AIS DEBUG] timestamp={timestamp}, aisbatch_cache shape: {aisbatch_cache.shape}")
+        # print(f"[AIS DEBUG] timestamp={timestamp}, aisbatch_cache shape: {aisbatch_cache.shape}")
         
         # 2.数据生成
         self.AIS_vis, self.AIS_cur = self.ais_pro(AIS_cur,
-            AIS_las, AIS_vis, camera_pos_para, aisbatch_cache, timestamp)
+            AIS_las, AIS_vis, camera_pos_para, aisbatch_cache, timestamp, camera_type)
 
-        print(f"[AIS DEBUG] 处理后 AIS_vis shape: {self.AIS_vis.shape}, AIS_cur shape: {self.AIS_cur.shape}")
-        if not self.AIS_vis.empty:
-            print(f"  AIS_vis mmsi列表: {list(self.AIS_vis['mmsi'].unique())}")
-            # 统计每个mmsi的轨迹点数
-            for mmsi in self.AIS_vis['mmsi'].unique():
-                count = len(self.AIS_vis[self.AIS_vis['mmsi'] == mmsi])
-                print(f"    mmsi {mmsi}: {count} 个轨迹点")
+        # print(f"[AIS DEBUG] 处理后 AIS_vis shape: {self.AIS_vis.shape}, AIS_cur shape: {self.AIS_cur.shape}")
+        # if not self.AIS_vis.empty:
+        #     print(f"  AIS_vis mmsi列表: {list(self.AIS_vis['mmsi'].unique())}")
+        #     # 统计每个mmsi的轨迹点数
+        #     for mmsi in self.AIS_vis['mmsi'].unique():
+        #         count = len(self.AIS_vis[self.AIS_vis['mmsi'] == mmsi])
+        #         print(f"    mmsi {mmsi}: {count} 个轨迹点")
             
         return self.AIS_vis, self.AIS_cur
 

@@ -51,26 +51,28 @@ struct VisiableTra {
     int64_t timestamp_ns;  // 时间戳（纳秒），使用标准C++类型，避免依赖ROS
     int ais_or_not;
     int mmsi;
-    double sog;
-    double cog;
-    double latitude;
-    double longitude;
-    double box_x1;
-    double box_y1;
-    double box_x2;
-    double box_y2;
+    std::string ship_type;
+    float sog;
+    float cog;
+    float latitude;
+    float longitude;
+    float box_x1;
+    float box_y1;
+    float box_x2;
+    float box_y2;
 };
 
 // 
 struct TrajectoryBoxInfo {
     cv::Point2i top_left;
     cv::Point2i bottom_right;
-    std::string class_name;
+    std::string message_type; // 消息类型，AIS或Visual
+    std::string ship_type;  // 船只类型
     int mmsi;
-    double sog;
-    double cog;
-    double lat;
-    double lon;
+    float sog;
+    float cog;
+    float lat;
+    float lon;
 };
 
 

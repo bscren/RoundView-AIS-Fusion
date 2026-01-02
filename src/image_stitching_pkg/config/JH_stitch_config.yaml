@@ -1,6 +1,9 @@
 # 多相机拼接和目标跟踪接口的配置文件
 # 配置说明：请根据实际设备参数修改以下配置
 
+# rtsp_image_2 / camera_image_topic_0 !!!!!!!!!!!!
+
+
 # ============ 参数配置 ============
 
 # 相机发布器参数配置
@@ -31,20 +34,20 @@ parameters:
     
   # 对应的拼接器的参数配置
   Stitcher_parameters:
-    refresh_time: 60                   # 拼缝线刷新时间间隔，单位秒（3600秒=1小时/86400秒=24小时，如果场景稳定可以设置更长）
+    refresh_time: 60                 # 拼缝线刷新时间间隔，单位秒（3600秒=1小时/86400秒=24小时，如果场景稳定可以设置更长）
     min_keypoints: 100               # 特征匹配最小关键点数
-    min_confidence: 0.5              # 匹配对最小置信度
-    min_inliers: 10                  # 特征匹配最小内点数
+    min_confidence: 0.3              # 匹配对最小置信度(0.5->0.3)
+    min_inliers: 5                  # 特征匹配最小内点数(10->5)
     max_focal_variance: 50000.0      # 各个相机之间最大焦距方差
     y_tolerance: 200.0               # 拼接图像间的y轴容差
     roi_threshold: 0.95              # 掩码去除黑边的ROI阈值
     detect_confidence: 0.05          # 目标检测置信度
     iou_threshold: 0.1               # 目标检测框IOU筛选阈值
-    scale: 0.5                        # 图像缩放比例
+    scale: 0.5                       # 图像缩放比例
     cropornot: true                  # 是否裁剪全景图 
-    drawboxornot: true               # 是否绘制检测框
-    save_CameraParams: True         # 是否保存相机K R T参数
-    save_CameraParams_path: "/home/tl/RV/src/image_stitching_pkg/config/CameraParams_SiteTest.yaml" # 保存相机K R T参数的文件路径
+    drawboxornot: false               # 是否绘制检测框
+    save_CameraParams: true         # 是否保存相机K R T参数
+    save_CameraParams_path: "/home/tl/RV/src/image_stitching_pkg/config/CameraParams_Test.yaml" # 保存相机K R T参数的文件路径
     use_saved_CameraParams: false     # 是否使用已保存的相机K R T参数
     FOV_hor: 105.0                   # 水平视场角
     FOV_ver: 57.0                    # 垂直视场角

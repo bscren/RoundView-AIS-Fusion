@@ -1,3 +1,7 @@
+// 该版本:
+// 1. 通过串口 / TCP / UDP 接收 AIVDM 报文
+// 2. 只支持单条 AIVDM、GPGGA、GPRMC 消息的解析和发布，不支持批量发布
+
 #include "rclcpp/rclcpp.hpp"
 #include <libserial/SerialPort.h>
 #include <boost/asio.hpp>

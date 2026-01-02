@@ -2,6 +2,7 @@ string camera_name # 对应相机的名称
 builtin_interfaces/Time timestamp # 时间戳
 uint8 ais # 1 为包含视觉信息的AIS信息，0 为只有视觉的检测框信息
 uint32 mmsi # 船只的nmsi号
+string ship_type # 船只类型
 float32 sog # 船只的速度
 float32 cog # 船只的航向
 float32 lat # 船只的纬度
