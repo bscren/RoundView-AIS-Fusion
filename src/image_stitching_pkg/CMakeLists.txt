@@ -27,8 +27,7 @@ find_package(yaml-cpp REQUIRED)
 # 查找nlohmann_json包
 find_package(nlohmann_json REQUIRED)
 
-# 显式查找detect_interfaces 和 mycustface自定义消息包
-find_package(detect_interfaces REQUIRED)
+# 显式查找 marnav_interfaces 和 mycustface自定义消息包
 find_package(mycustface REQUIRED)
 find_package(marnav_interfaces REQUIRED)
 
@@ -140,7 +139,6 @@ ament_target_dependencies(stitch
   std_msgs
   image_transport
   cv_bridge
-  detect_interfaces  # 添加自定义消息包依赖
   mycustface  # 添加自定义消息包依赖
 )  # 移除OpenCV，避免与pkg-config冲突
 
@@ -161,7 +159,6 @@ ament_target_dependencies(JH_ROS_stitch
   std_msgs
   image_transport
   cv_bridge
-  detect_interfaces
   mycustface
   marnav_interfaces
   nlohmann_json

@@ -11,7 +11,6 @@
                 "/usr/include/**",
                 "/usr/local/include/**",
                 "/usr/local/include/opencv4/**",
-                "/home/tl/RV/install/detect_interfaces/include/**",
                 "/home/tl/RV/install/mycustface/include/**",
                 "/home/tl/RV/install/marnav_interfaces/include/**",
                 "/home/tl/RV/src/marnav_ais/extern/marnav/include/**",
