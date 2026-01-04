@@ -1,5 +1,4 @@
 import csv
-
 import numpy as np
 import cv2
 import torch
@@ -15,18 +14,19 @@ import pandas as pd
 from IPython import embed
 import os
 simplefilter(action='ignore', category=FutureWarning)
-# 初始化目标检测
-yolo = YOLO()
 
-# 初始化跟踪模型
-cfg = get_config()
-cfg.merge_from_file("/home/tl/RV/src/marnav_vis/deep_sort/configs/deep_sort.yaml")
-deepsort = DeepSort(cfg.DEEPSORT.REID_CKPT,
-                    max_dist=cfg.DEEPSORT.MAX_DIST, min_confidence=cfg.DEEPSORT.MIN_CONFIDENCE,
-                    nms_max_overlap=cfg.DEEPSORT.NMS_MAX_OVERLAP, max_iou_distance=cfg.DEEPSORT.MAX_IOU_DISTANCE,
-                    max_age=cfg.DEEPSORT.MAX_AGE, n_init=cfg.DEEPSORT.N_INIT, nn_budget=cfg.DEEPSORT.NN_BUDGET,
-                    use_cuda=True)
+# 为避免主线程中import导致新建多余检测/跟踪模型，注释模块顶层，改为在VISPRO 的init里实现
+# #初始化目标检测
+# yolo = YOLO()
 
+# # 初始化跟踪模型
+# cfg = get_config()
+# cfg.merge_from_file("/home/tl/RV/src/marnav_vis/deep_sort/configs/deep_sort.yaml")
+# deepsort = DeepSort(cfg.DEEPSORT.REID_CKPT,
+#                     max_dist=cfg.DEEPSORT.MAX_DIST, min_confidence=cfg.DEEPSORT.MIN_CONFIDENCE,
+#                     nms_max_overlap=cfg.DEEPSORT.NMS_MAX_OVERLAP, max_iou_distance=cfg.DEEPSORT.MAX_IOU_DISTANCE,
+#                     max_age=cfg.DEEPSORT.MAX_AGE, n_init=cfg.DEEPSORT.N_INIT, nn_budget=cfg.DEEPSORT.NN_BUDGET,
+#                     use_cuda=True)
 
 
 def box_whether_in_area(bounding_box, Area):
@@ -116,6 +116,12 @@ def whether_in_OAR(point, OAR_list):
 
 
 def OAR_extractor(his_traj_dataframe_list,val):
+    """
+    @brief 提取遮挡区域
+    @param his_traj_dataframe_list 历史轨迹数据列表
+    @param val 遮挡阈值
+    @return 遮挡区域列表，遮挡ID列表
+    """
     # 1. 初始化遮挡区域和id列表
     OAR_list = []
     OAR_id_list = []
@@ -181,6 +187,8 @@ def id_whether_stable(id, last_5_trajs):
 class VISPRO(object):
     def __init__(self, anti, val, t):
         self.anti = anti
+        self.val = val
+        self.t = t
         self.last5_vis_tra_list = []
         self.Vis_tra_cur_3      = pd.DataFrame(columns=['ID','x1','y1','x2','y2','x','y','timestamp'])
         self.Vis_tra_cur        = pd.DataFrame(columns=['ID','x1','y1','x2','y2','x','y','timestamp'])
@@ -189,15 +197,26 @@ class VISPRO(object):
         self.OAR_list = []
         self.OAR_ids_list = []
         self.OAR_mmsi_list = []
-        self.val = val
-        self.t = t
         self.Anti_occlusion_traj = pd.DataFrame(columns=['ID','x1','y1','x2','y2','x','y','speed','timestamp'])
+
+        # 初始化目标检测
+        self.yolo = YOLO()
+
+        # 初始化跟踪模型
+        self.cfg = get_config()
+        self.cfg.merge_from_file("/home/tl/RV/src/marnav_vis/deep_sort/configs/deep_sort.yaml")
+        self.deepsort = DeepSort(self.cfg.DEEPSORT.REID_CKPT,
+                            max_dist=self.cfg.DEEPSORT.MAX_DIST, min_confidence=self.cfg.DEEPSORT.MIN_CONFIDENCE,
+                            nms_max_overlap=self.cfg.DEEPSORT.NMS_MAX_OVERLAP, max_iou_distance=self.cfg.DEEPSORT.MAX_IOU_DISTANCE,
+                            max_age=self.cfg.DEEPSORT.MAX_AGE, n_init=self.cfg.DEEPSORT.N_INIT, nn_budget=self.cfg.DEEPSORT.NN_BUDGET,
+                            use_cuda=True)
+
 
     def detection(self, image):
         # 用于目标检测
         im0 = cv2.cvtColor(image,cv2.COLOR_BGR2RGB)
         im0 = Image.fromarray(im0)
-        bboxes = yolo.detect_image(im0)
+        bboxes = self.yolo.detect_image(im0)
         return bboxes
 
     def track(self, image, bboxes, bboxes_anti_occ, id_list, timestamp):
@@ -229,7 +248,7 @@ class VISPRO(object):
             xywhs_anti_occ = torch.Tensor(bbox_xywh_anti_occ)
             confss_anti_occ = torch.Tensor(confs_anti_occ)
             # 放入DeepSORT, 输出outputs = [x1,y1,x2,y2,[track],ID]
-            outputs = deepsort.update(xywhs, confss, image, xywhs_anti_occ, confss_anti_occ, id_list, timestamp)
+            outputs = self.deepsort.update(xywhs, confss, image, xywhs_anti_occ, confss_anti_occ, id_list, timestamp)
             for value in list(outputs):
                 x1, y1, x2, y2, _, track_id = value
                 if track_id in id_list:

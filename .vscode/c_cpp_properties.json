@@ -14,6 +14,8 @@
                 "/home/tl/RV/install/mycustface/include/**",
                 "/home/tl/RV/install/marnav_interfaces/include/**",
                 "/home/tl/RV/src/marnav_ais/extern/marnav/include/**",
+                "/home/tl/RV/src/marnav_vis_cpp/include/**",
+                "/home/tl/onnxruntime-linux-x64-gpu-1.18.1/include/**",
                 "/usr/include/serial/**"
 
             ],

@@ -6,8 +6,8 @@
 
 int main() {
     // 初始化YOLO
-    std::string model_path = "/home/tl/RV/src/marnav_vis/detection_yolox/model_data/Yolo11m.onnx";
-    std::string classes_path = "/home/tl/RV/src/marnav_vis/detection_yolox/model_data/Yolo11m_ship_classes.txt";
+    std::string model_path = "src/marnav_vis_cpp/model/Yolo11m.onnx";
+    std::string classes_path = "src/marnav_vis_cpp/model/Yolo11m_ship_classes.txt";
     
     YOLO_ONNX yolo(model_path, classes_path, 
                     640, 640,         // input_shape
@@ -18,7 +18,7 @@ int main() {
                     YOLOType::YOLOv11); // model_type
     
     // 读取图像
-    cv::Mat image = cv::imread("/home/tl/RV/src/marnav_vis_cpp/test2.jpg");
+    cv::Mat image = cv::imread("src/marnav_vis_cpp/test/test.jpg");
     if (image.empty()) {
         std::cerr << "无法读取图像" << std::endl;
         return -1;
@@ -51,7 +51,7 @@ int main() {
     }
     
     // 保存结果
-    cv::imwrite("result.jpg", image);
+    cv::imwrite("src/marnav_vis_cpp/test/result.jpg", image);
     
     return 0;
 }

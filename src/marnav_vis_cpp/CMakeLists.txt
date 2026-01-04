@@ -35,11 +35,15 @@ find_package(OpenCV 4 REQUIRED COMPONENTS core imgproc imgcodecs highgui)
 # 查找GeographicLib库
 find_package(GeographicLib REQUIRED)
 
+# 查找Eigen3库
+find_package(Eigen3 REQUIRED)
+
 # 配置头文件搜索路径
 include_directories(
   include
   ${OpenCV_INCLUDE_DIRS}
   ${ONNXRUNTIME_DIR}/include
+  ${EIGEN3_INCLUDE_DIRS}
 )
 
 
@@ -48,6 +52,8 @@ include_directories(
 add_executable(deep_sorvf_node
   src/DeepSORVF_ros.cpp
   src/AIS_utils.cpp
+  src/VIS_utils.cpp
+  src/yolo_onnx.cpp
 )
 # 包含目录设置
 target_include_directories(deep_sorvf_node
@@ -66,11 +72,16 @@ ament_target_dependencies(deep_sorvf_node
   message_filters
   marnav_interfaces
 )
+target_link_directories(deep_sorvf_node
+  PRIVATE
+  ${ONNXRUNTIME_DIR}/lib
+)
 # 链接库（OpenCV和GeographicLib）
 target_link_libraries(deep_sorvf_node
   ${OpenCV_LIBRARIES}
   ${YAML_CPP_LIBRARIES}
   GeographicLib::GeographicLib
+  onnxruntime
 )
 
 
@@ -101,10 +112,37 @@ set_target_properties(yolo_onnx_node PROPERTIES
   BUILD_WITH_INSTALL_RPATH TRUE
 )
 
+# CKPT ONNX 特征提取节点
+add_executable(ckpt_onnx_node 
+  src/ckpt_onnx.cpp
+)
+target_include_directories(ckpt_onnx_node
+  PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+  ${OpenCV_INCLUDE_DIRS}
+  ${ONNXRUNTIME_DIR}/include
+)
+target_link_directories(ckpt_onnx_node
+  PRIVATE
+  ${ONNXRUNTIME_DIR}/lib
+)
+target_link_libraries(ckpt_onnx_node
+  ${OpenCV_LIBRARIES}
+  onnxruntime
+)
+
+set_target_properties(ckpt_onnx_node PROPERTIES
+  INSTALL_RPATH "${ONNXRUNTIME_DIR}/lib"
+  INSTALL_RPATH_USE_LINK_PATH TRUE
+  BUILD_WITH_INSTALL_RPATH TRUE
+)
+
 # 安装可执行文件
 install(TARGETS
   deep_sorvf_node
   yolo_onnx_node
+  ckpt_onnx_node
   DESTINATION lib/${PROJECT_NAME}
 )
 
