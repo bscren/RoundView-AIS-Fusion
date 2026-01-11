@@ -76,6 +76,70 @@ struct NodeConfig {
     double FOV_ver;
 };
 
+/**
+ * 自动获取 RV 工作空间根路径（如 /home/tl/RV/）
+ * 优先级：RV_WS 环境变量 > 从包路径反向推导 > 当前目录
+ */
+string getRVWorkspaceRoot(rclcpp::Logger logger) {
+    // 1. 优先读取环境变量 RV_WS（用户需在 .bashrc 中 export RV_WS=/home/xxx/RV & source ~/.bashrc）
+    const char* rv_ws_env = std::getenv("RV_WS");
+    if (rv_ws_env != nullptr && !std::string(rv_ws_env).empty()) {
+        std::string env_path = std::filesystem::canonical(rv_ws_env).string();
+        RCLCPP_INFO(logger, "✅ 从环境变量 RV_WS 获取工作空间根路径: %s", env_path.c_str());
+        return env_path;
+    }
+    else {
+        RCLCPP_WARN(logger, "❌ 未找到环境变量 RV_WS，尝试从包路径反向推导");
+    }
+    // 2. 从包路径反向推导（如 /home/tl/RV/src/image_stitching_pkg）
+    try {
+        string package_path = ament_index_cpp::get_package_share_directory("image_stitching_pkg");
+        std::filesystem::path pkg_path(package_path);
+        std::filesystem::path ws_root = pkg_path;
+        // 循环向上找，直到找到包含 "install" 的目录
+        while (ws_root.has_parent_path() && ws_root.filename() != "install") {
+            ws_root = ws_root.parent_path();
+        }
+        // 再向上跳一级，得到RV根目录
+        if (ws_root.filename() == "install") {
+            ws_root = ws_root.parent_path();
+        }
+        RCLCPP_INFO(logger, "✅ 从包路径反向推导工作空间根路径: %s", ws_root.c_str());
+        return ws_root;
+    }
+    catch (const std::exception& e) {
+        RCLCPP_ERROR(logger, "❌ 从包路径反向推导工作空间根路径失败: %s", e.what());
+        throw;
+    }
+    // 3. 降级：使用当前可执行文件所在目录反向推导（兜底）
+    std::filesystem::path exe_path = std::filesystem::canonical("/proc/self/exe").parent_path();
+    // 可执行文件路径示例：/home/tl/RV/install/image_stitching_pkg/lib/image_stitching_pkg/JH_ROS_stitch
+    // 向上跳 4 级到 RV 根目录：lib → image_stitching_pkg → install → RV
+    std::filesystem::path fallback_ws = exe_path.parent_path().parent_path().parent_path().parent_path();
+    if (std::filesystem::exists(fallback_ws)) {
+        std::string fallback_path = fallback_ws.string();
+        RCLCPP_WARN(logger, "⚠️ 使用兜底路径作为工作空间: %s", fallback_path.c_str());
+        return fallback_path;
+    }
+    else {
+        RCLCPP_ERROR(logger, "❌ 无法确定工作空间根路径，请检查可执行文件路径或配置 RV_WS 环境变量");
+        throw std::runtime_error("无法确定工作空间根路径");
+    }
+}
+
+/**
+ * 拼接完整路径（相对于工作空间根路径）
+*/ 
+string resolveFullPath(const std::string& ws_root, const std::string& relative_path, rclcpp::Logger logger) {
+    if (std::filesystem::path(relative_path).is_absolute()) {
+        RCLCPP_WARN(logger, "⚠️ YAML 中配置的路径已是绝对路径，直接使用: %s", relative_path.c_str());
+        return relative_path;
+    }
+    std::filesystem::path full_path = std::filesystem::path(ws_root) / relative_path;
+    RCLCPP_INFO(logger, "📌 拼接后完整路径: %s", full_path.string().c_str());
+    return full_path.string();
+}
+
 // 从YAML文件加载配置
 bool loadConfigFromYAML(const std::string& config_file_path, NodeConfig& config, rclcpp::Logger logger) {
     try {
@@ -145,7 +209,11 @@ bool loadConfigFromYAML(const std::string& config_file_path, NodeConfig& config,
         config.cropornot = stitcher_params["cropornot"].as<bool>();
         config.drawboxornot = stitcher_params["drawboxornot"].as<bool>();
         config.save_CameraParams = stitcher_params["save_CameraParams"].as<bool>();
-        config.save_CameraParams_path = stitcher_params["save_CameraParams_path"].as<std::string>();
+        string relative_params_path = stitcher_params["save_CameraParams_path"].as<std::string>();
+        // 1. 自动获取工作空间根路径
+        string ws_root = getRVWorkspaceRoot(logger);
+        // 2. 拼接完整路径
+        config.save_CameraParams_path = resolveFullPath(ws_root, relative_params_path, logger);
         config.use_saved_CameraParams = stitcher_params["use_saved_CameraParams"].as<bool>();
         config.FOV_hor = stitcher_params["FOV_hor"].as<double>();
         config.FOV_ver = stitcher_params["FOV_ver"].as<double>();

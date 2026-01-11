@@ -47,7 +47,7 @@ parameters:
     cropornot: true                  # 是否裁剪全景图 
     drawboxornot: false               # 是否绘制检测框
     save_CameraParams: true         # 是否保存相机K R T参数
-    save_CameraParams_path: "/home/tl/RV/src/image_stitching_pkg/config/CameraParams_Test.yaml" # 保存相机K R T参数的文件路径
+    save_CameraParams_path: "src/image_stitching_pkg/config/CameraParams_Test.yaml" # 保存相机K R T参数的文件路径
     use_saved_CameraParams: true     # 是否使用已保存的相机K R T参数
     FOV_hor: 105.0                   # 水平视场角
     FOV_ver: 57.0                    # 垂直视场角

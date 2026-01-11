@@ -13,6 +13,7 @@ using namespace std;
 using namespace cv;
 using namespace cv::detail;
 
+
 JHStitcher::JHStitcher(
     std::unordered_map<std::string, int>& cam_name_to_idx,
     int refresh_time,

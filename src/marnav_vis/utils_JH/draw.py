@@ -72,7 +72,7 @@ def inf_loc(x, y, w, h, w0, h0):
         x2 = w
     return x1, y1, x2, y2
 
-def process_img(df_draw, x1, y1, x2, y2, fusion_current, w, h, w0, h0, Type):
+def process_img(df_draw, x1, y1, x2, y2, fusion_current, w, h, w0, h0, Type, class_name='vessel'):
     """
     对每帧视频图片进行处理，对检测船舶添加相关信息
     add_img:原视频船舶图片，需添加元素的图片
@@ -81,6 +81,7 @@ def process_img(df_draw, x1, y1, x2, y2, fusion_current, w, h, w0, h0, Type):
     x1,y1:船舶检测框的左上角坐标
     x2,y2：船舶检测框的右下角坐标
     fusion_current：当前船舶的融合信息
+    class_name: 船只类别名称
 
     return：处理后的视频图片
     """
@@ -95,6 +96,9 @@ def process_img(df_draw, x1, y1, x2, y2, fusion_current, w, h, w0, h0, Type):
         cog  = round(fusion_current['course'][0], 5)
         lat  = round(fusion_current['lat'][0], 5)
         lon  = round(fusion_current['lon'][0], 5)
+        # 从融合结果中获取class_name
+        if 'class_name' in fusion_current.columns:
+            class_name = fusion_current['class_name'][0]
     else:
         color = (0,0,255)
         # add_img = draw_box(add_img, x1, y1, x2, y2, color, tf)
@@ -108,7 +112,7 @@ def process_img(df_draw, x1, y1, x2, y2, fusion_current, w, h, w0, h0, Type):
     df_draw  = df_draw.append({'ais':ais,'mmsi':mmsi,'sog':sog,"cog":cog,'lat':lat,'lon':lon,\
                                'box_x1':x1,'box_y1':y1,'box_x2':x2,'box_y2':y2,\
                             'inf_x1':inf_x1,'inf_y1':inf_y1,'inf_x2':inf_x2,'inf_y2':inf_y2,\
-                                'color':color}, ignore_index=True)
+                                'color':color,'class_name':class_name}, ignore_index=True)
 
     return df_draw
 
@@ -171,7 +175,7 @@ def filter_inf(df_draw, w, h, w0, h0, wn, hn, df):
     df_draw = df_draw.sort_values(by=['inf_x1'],ascending=True)
     df_new = pd.DataFrame(columns=['ais', 'mmsi', 'sog', 'cog',\
                 'lat', 'lon', 'box_x1', 'box_y1', 'box_x2', 'box_y2',\
-                                    'inf_x1', 'inf_y1', 'inf_x2', 'inf_y2', 'color'])
+                                    'inf_x1', 'inf_y1', 'inf_x2', 'inf_y2', 'color', 'class_name'])
     index = 0
     for ind, inf in df_draw.iterrows():
         if inf['ais'] == 1:
@@ -191,7 +195,7 @@ class DRAW(object):
     def __init__(self, shape, t):
         self.df_draw = pd.DataFrame(columns=['ais', 'mmsi', 'sog', 'cog',\
                 'lat', 'lon', 'box_x1', 'box_y1', 'box_x2', 'box_y2',\
-                                    'inf_x1', 'inf_y1', 'inf_x2', 'inf_y2', 'color'])
+                                    'inf_x1', 'inf_y1', 'inf_x2', 'inf_y2', 'color', 'class_name'])
         self.w , self.h = int(shape[0]), int(shape[1])
         self.h0, self.w0 = self.h//8, self.w//12
         self.hn, self.wn = self.h//15, self.w//15
@@ -204,7 +208,7 @@ class DRAW(object):
         add_img = pic.copy()
         df_draw = pd.DataFrame(columns=['ais', 'mmsi', 'sog', 'cog',\
             'lat', 'lon', 'box_x1', 'box_y1', 'box_x2', 'box_y2',\
-                                'inf_x1', 'inf_y1', 'inf_x2', 'inf_y2', 'color'])
+                                'inf_x1', 'inf_y1', 'inf_x2', 'inf_y2', 'color', 'class_name'])
         mmsi_list = AIS_vis['mmsi'].unique()
         id_list = Vis_cur['ID'].unique()
         # 1. 遍历所有视觉ID
@@ -217,22 +221,25 @@ class DRAW(object):
                 y1 = int(max(id_current['y1'][last],0))
                 x2 = int(min(id_current['x2'][last],self.w))
                 y2 = int(min(id_current['y2'][last],self.h))
+                # 提取class_name
+                class_name = id_current['class_name'][last] if 'class_name' in id_current.columns else 'vessel'
+                
                 if id_current['timestamp'][last] == timestamp//1000 and len(fusion_list) != 0:
                     fusion_current = fusion_list[fusion_list['ID'] == \
                             id_current['ID'][last]].reset_index(drop=True)
                     # 存在AIS信息
                     if len(fusion_current) != 0:
                         df_draw = process_img(df_draw, x1, y1, x2, y2,\
-                            fusion_current, self.w, self.h, self.w0, self.h0, Type = True)
+                            fusion_current, self.w, self.h, self.w0, self.h0, Type = True, class_name=class_name)
                     else:
                         fusion_current = []
                         df_draw = process_img(df_draw, x1, y1, x2, y2,\
-                                    fusion_current, self.w, self.h, self.wn, self.hn, Type = False)
+                                    fusion_current, self.w, self.h, self.wn, self.hn, Type = False, class_name=class_name)
                 # 不存在AIS信息
                 else:
                     fusion_current = []
                     df_draw = process_img(df_draw, x1, y1, x2, y2,\
-                                    fusion_current, self.w, self.h, self.wn, self.hn, Type = False)      
+                                    fusion_current, self.w, self.h, self.wn, self.hn, Type = False, class_name=class_name)      
         self.df_draw = filter_inf(df_draw, self.w, self.h, self.w0, self.h0, self.wn, self.hn, self.tf)
         add_img = draw(add_img, self.df_draw, self.tf)
         return add_img, self.df_draw

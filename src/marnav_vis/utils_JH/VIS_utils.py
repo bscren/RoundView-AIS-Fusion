@@ -185,22 +185,22 @@ def id_whether_stable(id, last_5_trajs):
 
 # 目标检测跟踪
 class VISPRO(object):
-    def __init__(self, anti, val, t):
+    def __init__(self, anti, val, t, yolo_type ="yolo11m"):
         self.anti = anti
         self.val = val
         self.t = t
         self.last5_vis_tra_list = []
-        self.Vis_tra_cur_3      = pd.DataFrame(columns=['ID','x1','y1','x2','y2','x','y','timestamp'])
-        self.Vis_tra_cur        = pd.DataFrame(columns=['ID','x1','y1','x2','y2','x','y','timestamp'])
-        self.Vis_tra            = pd.DataFrame(columns=['ID','x1','y1','x2','y2','x','y','timestamp'])
-        self.VIS_tra_last = pd.DataFrame(columns=['ID','x1','y1','x2','y2','x','y', 'speed','timestamp'])
+        self.Vis_tra_cur_3      = pd.DataFrame(columns=['ID','x1','y1','x2','y2','x','y','class_name','timestamp'])
+        self.Vis_tra_cur        = pd.DataFrame(columns=['ID','x1','y1','x2','y2','x','y','class_name','timestamp'])
+        self.Vis_tra            = pd.DataFrame(columns=['ID','x1','y1','x2','y2','x','y','class_name','timestamp'])
+        self.VIS_tra_last = pd.DataFrame(columns=['ID','x1','y1','x2','y2','x','y','class_name', 'speed','timestamp'])
         self.OAR_list = []
         self.OAR_ids_list = []
         self.OAR_mmsi_list = []
-        self.Anti_occlusion_traj = pd.DataFrame(columns=['ID','x1','y1','x2','y2','x','y','speed','timestamp'])
+        self.Anti_occlusion_traj = pd.DataFrame(columns=['ID','x1','y1','x2','y2','x','y','class_name','speed','timestamp'])
 
         # 初始化目标检测
-        self.yolo = YOLO()
+        self.yolo = YOLO(yolo_type=yolo_type)
 
         # 初始化跟踪模型
         self.cfg = get_config()
@@ -221,26 +221,28 @@ class VISPRO(object):
 
     def track(self, image, bboxes, bboxes_anti_occ, id_list, timestamp):
         """
-        bboxes: 检测结果（不含遮挡区域）
-        bboxes_anti_occ: 遮挡区域抗遮挡推算
+        bboxes: 检测结果（不含遮挡区域）格式: (x1, y1, x2, y2, class_name, conf)
+        bboxes_anti_occ: 遮挡区域抗遮挡推算 格式: (x1, y1, x2, y2, class_name, conf)
         id_list: 抗遮挡推算对应ID
         """
         # 用于目标跟踪
-        bbox_xywh, confs = [], []
-        bbox_xywh_anti_occ, confs_anti_occ = [], []
+        bbox_xywh, confs, class_names = [], [], []
+        bbox_xywh_anti_occ, confs_anti_occ, class_names_anti_occ = [], [], []
         if len(bboxes) or len(bboxes_anti_occ):
             # 检测结果整理
-            for x1, y1, x2, y2, _, conf in bboxes:
+            for x1, y1, x2, y2, class_name, conf in bboxes:
                 #获取框信息 [中心点x坐标，中心点y坐标，宽度，高度]
                 obj = [int((x1+x2)/2), int((y1+y2)/2),x2-x1, y2-y1]
                 bbox_xywh.append(obj)#框信息
                 confs.append(conf)#置信度
+                class_names.append(class_name)  # 保存类别名称
             # 抗遮挡预测结果整理
-            for x1, y1, x2, y2, _, conf in bboxes_anti_occ:
+            for x1, y1, x2, y2, class_name, conf in bboxes_anti_occ:
                 #获取框信息 [中心点x坐标，中心点y坐标，宽度，高度]
                 obj = [int((x1+x2)/2), int((y1+y2)/2),x2-x1, y2-y1]
                 bbox_xywh_anti_occ.append(obj)#框信息
                 confs_anti_occ.append(conf)#置信度
+                class_names_anti_occ.append(class_name)  # 保存类别名称
 
             # 检测结果、抗遮挡预测结果转tensor
             xywhs = torch.Tensor(bbox_xywh)
@@ -249,26 +251,54 @@ class VISPRO(object):
             confss_anti_occ = torch.Tensor(confs_anti_occ)
             # 放入DeepSORT, 输出outputs = [x1,y1,x2,y2,[track],ID]
             outputs = self.deepsort.update(xywhs, confss, image, xywhs_anti_occ, confss_anti_occ, id_list, timestamp)
-            for value in list(outputs):
+            
+            # 建立bbox索引到class_name的映射
+            # 合并检测结果和抗遮挡结果的类别信息
+            all_class_names = class_names + class_names_anti_occ
+            all_bboxes_coords = [(int((x1+x2)/2), int((y1+y2)/2)) for x1,y1,x2,y2,_,_ in bboxes] + \
+                                [(int((x1+x2)/2), int((y1+y2)/2)) for x1,y1,x2,y2,_,_ in bboxes_anti_occ]
+            
+            for idx, value in enumerate(list(outputs)):
                 x1, y1, x2, y2, _, track_id = value
+                class_name_to_store = 'vessel'  # 默认类别
+                
                 if track_id in id_list:
-                    x1, y1, x2, y2, _, _ = bboxes_anti_occ[id_list.index(track_id)] # 要把没有历史纪录的id从id——list中删掉
-                # 存储至pd中[ID,x1,y1,x2,y2,trackx,tracky,time]
+                    # 从抗遮挡结果中获取
+                    anti_occ_idx = id_list.index(track_id)
+                    x1, y1, x2, y2, class_name_to_store, _ = bboxes_anti_occ[anti_occ_idx]
+                else:
+                    # 从检测结果中获取：通过匹配中心点坐标
+                    output_center = (int((x1+x2)/2), int((y1+y2)/2))
+                    # 找最接近的bbox（允许一定误差）
+                    min_dist = float('inf')
+                    best_match_idx = -1
+                    for bbox_idx, bbox_center in enumerate(all_bboxes_coords[:len(class_names)]):
+                        dist = abs(output_center[0] - bbox_center[0]) + abs(output_center[1] - bbox_center[1])
+                        if dist < min_dist:
+                            min_dist = dist
+                            best_match_idx = bbox_idx
+                    if best_match_idx >= 0 and min_dist < 50:  # 距离阈值50像素
+                        class_name_to_store = class_names[best_match_idx]
+                
+                # 存储至pd中[ID,x1,y1,x2,y2,trackx,tracky,class_name,time]
                 self.Vis_tra_cur_3 = self.Vis_tra_cur_3.append({'ID':track_id,\
                     'x1':int(x1),'y1':int(y1),'x2':int(x2),'y2':int(y2),'x':int((x1 + x2) / 2),\
-                        'y':int((y1 + y2) / 2), 'timestamp':timestamp//1000}, ignore_index=True)
+                        'y':int((y1 + y2) / 2), 'class_name':class_name_to_store, 'timestamp':timestamp//1000}, ignore_index=True)
 
-    def update_tra(self, Vis_tra, timestamp): # update_tra 的核心逻辑：“求均值”
+    def update_tra(self, Vis_tra, timestamp): # update_tra 的核心逻辑："求均值"
         # 用于轨迹更新
-        self.Vis_tra_cur = pd.DataFrame(columns=['ID','x1','y1','x2','y2','x','y','timestamp'])
+        self.Vis_tra_cur = pd.DataFrame(columns=['ID','x1','y1','x2','y2','x','y','class_name','timestamp'])
         id_list = self.Vis_tra_cur_3['ID'].unique()
         for k in range(len(id_list)):
             id_current = self.Vis_tra_cur_3[self.Vis_tra_cur_3['ID'] == id_list[k]].reset_index(drop=True)
-            # 求取均值
-            df = id_current.mean().astype(int) # 求当前秒内每一帧的指定ID的坐标均值
+            # 求取数值列的均值
+            df = id_current[['ID','x1','y1','x2','y2','x','y']].mean().astype(int)
+            # 对于 class_name，取出现最多的类别（众数）
+            class_name_mode = id_current['class_name'].mode()
+            df['class_name'] = class_name_mode[0] if len(class_name_mode) > 0 else 'vessel'
             df['timestamp'] = timestamp // 1000
             self.Vis_tra_cur = self.Vis_tra_cur.append(df, ignore_index=True)
-        self.Vis_tra_cur_3 = pd.DataFrame(columns=['ID','x1','y1','x2','y2','x','y','timestamp'])
+        self.Vis_tra_cur_3 = pd.DataFrame(columns=['ID','x1','y1','x2','y2','x','y','class_name','timestamp'])
 
         Vis_tra_cur_withfeature = motion_features_extraction(self.last5_vis_tra_list, VIS_tra_cur= self.Vis_tra_cur)
         self.Vis_tra = self.Vis_tra.append(Vis_tra_cur_withfeature) # 轨迹数据更新,self.Vis_tra 会自动新增"speed"该列。
@@ -354,13 +384,15 @@ class VISPRO(object):
                         if final_find_flg and second_final_find_flg:
                             x_motion = final_pos[0] - second_final_pos[0]
                             y_motion = final_pos[1] - second_final_pos[1]
+                            # 从历史轨迹中获取类别信息
+                            anti_occ_class = self.Anti_occlusion_traj.iloc[k].get('class_name', 'vessel')
                             # 预测结果添加到抗遮挡检测框中
                             bboxes_anti_occ.append(
                                 (self.Anti_occlusion_traj.iloc[k].loc['x1'] + x_motion,
                                  self.Anti_occlusion_traj.iloc[k].loc['y1'] + y_motion,
                                  self.Anti_occlusion_traj.iloc[k].loc['x2'] + x_motion,
                                  self.Anti_occlusion_traj.iloc[k].loc['y2'] + y_motion,
-                                 'vessel', 1))  # 预测框生成
+                                 anti_occ_class, 1))  # 预测框生成，使用历史类别
                             break
                 # 若不存在MMSI
                 else:
@@ -379,13 +411,15 @@ class VISPRO(object):
                     id_list = list(trajs['ID'].unique())
                     last_traj = trajs.iloc[id_list.index(self.OAR_mmsi_list[k][0])]
                     Vis_traj_now = self.traj_prediction_via_visual(last_traj, timestamp, speed)
+                    # 从历史轨迹中获取类别信息
+                    vis_pred_class = last_traj.get('class_name', 'vessel')
                     # 添加到抗遮挡检测结果中
                     bboxes_anti_occ.append(
                         (Vis_traj_now.loc['x1'],
                          Vis_traj_now.loc['y1'],
                          Vis_traj_now.loc['x2'],
                          Vis_traj_now.loc['y2'],
-                         'vessel', 1))
+                         vis_pred_class, 1))
 
                 # 删除既没有五秒历史数据，又没有AIS的目标
             for i in range(len(pop_index_list)):
@@ -438,7 +472,7 @@ class VISPRO(object):
         self.VIS_tra_last = Vis_tra_cur
 
         # 更新被遮挡id对应的轨迹数据
-        self.Anti_occlusion_traj = pd.DataFrame(columns=['ID', 'x1', 'y1', 'x2', 'y2', 'x', 'y', 'speed', 'timestamp'])
+        self.Anti_occlusion_traj = pd.DataFrame(columns=['ID', 'x1', 'y1', 'x2', 'y2', 'x', 'y', 'class_name', 'speed', 'timestamp'])
         id_list = list(self.VIS_tra_last['ID'].unique())
         for i in self.OAR_ids_list:
             self.Anti_occlusion_traj = self.Anti_occlusion_traj.append(self.VIS_tra_last.iloc[id_list.index(i)])

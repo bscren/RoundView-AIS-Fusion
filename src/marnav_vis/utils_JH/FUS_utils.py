@@ -108,15 +108,15 @@ def traj_group(df_data, df_dataCur,  kind):
             return trajData_list, trajLabel_list, trajInf_list
             
         grouped = df_data.groupby('mmsi')
-        print(f"  [traj_group AIS] df_data有 {len(grouped)} 个mmsi分组")
+        # print(f"  [traj_group AIS] df_data有 {len(grouped)} 个mmsi分组")
         cur_mmsi_list = df_dataCur['mmsi'].tolist()
-        print(f"  [traj_group AIS] df_dataCur包含mmsi: {cur_mmsi_list}")
+        # print(f"  [traj_group AIS] df_dataCur包含mmsi: {cur_mmsi_list}")
         
         for value, group in grouped:
             # 仅记录历史中符合当前时刻存在的船
             if value in cur_mmsi_list:
                 traj = group.values
-                print(f"    mmsi {value}: 提取 {len(traj)} 个轨迹点")
+                # print(f"    mmsi {value}: 提取 {len(traj)} 个轨迹点")
                 
                 trajData_list.append(np.array(traj[:, 7:9])) # 提取x7,y8位置
                 trajLabel_list.append(int(traj[0, 0]))
@@ -126,21 +126,21 @@ def traj_group(df_data, df_dataCur,  kind):
         
         if len(trajData_list) == 0:
             print(f"  [traj_group AIS] ⚠️ 没有提取到任何AIS轨迹！")
-            print(f"    可能原因：df_dataCur中的mmsi不在df_data中")
+            # print(f"    可能原因：df_dataCur中的mmsi不在df_data中")
     
     # 3.VIS数据分组
     elif kind == 'VIS':
         if df_data.empty:
-            print(f"  [traj_group VIS] ⚠️ df_data 为空！")
+            # print(f"  [traj_group VIS] ⚠️ df_data 为空！")
             return trajData_list, trajLabel_list, trajInf_list
         if df_dataCur.empty:
-            print(f"  [traj_group VIS] ⚠️ df_dataCur 为空！")
+            # print(f"  [traj_group VIS] ⚠️ df_dataCur 为空！")
             return trajData_list, trajLabel_list, trajInf_list
             
         grouped = df_data.groupby('ID')
-        print(f"  [traj_group VIS] df_data有 {len(grouped)} 个ID分组")
+        # print(f"  [traj_group VIS] df_data有 {len(grouped)} 个ID分组")
         cur_id_list = df_dataCur['ID'].tolist()
-        print(f"  [traj_group VIS] df_dataCur包含ID: {cur_id_list}")
+        # print(f"  [traj_group VIS] df_dataCur包含ID: {cur_id_list}")
         
         for value, group in grouped:
             # 仅记录历史中符合当前时刻存在的船
@@ -148,6 +148,7 @@ def traj_group(df_data, df_dataCur,  kind):
                 traj = group.values
                 print(f"    ID {value}: 提取 {len(traj)} 个轨迹点")
                 
+                # 提取 x, y 坐标（列索引 5:7）
                 trajData_list.append(np.array(traj[:, 5:7]))
                 trajLabel_list.append(int(traj[0][0]))
                 trajInf_list.append(traj)
@@ -156,7 +157,7 @@ def traj_group(df_data, df_dataCur,  kind):
         
         if len(trajData_list) == 0:
             print(f"  [traj_group VIS] ⚠️ 没有提取到任何VIS轨迹！")
-            print(f"    可能原因：df_dataCur中的ID不在df_data中")
+            # print(f"    可能原因：df_dataCur中的ID不在df_data中")
 
     return trajData_list, trajLabel_list, trajInf_list
 
@@ -175,7 +176,7 @@ class FUSPRO(object):
         # 数据1: 当前时刻的匹配数据
         self.mat_cur  = pd.DataFrame(pd.DataFrame(columns=['ID/mmsi','timestamp', 'match']))
         # 数据2: 当前时刻的匹配信息
-        self.mat_list = pd.DataFrame(columns=['ID', 'mmsi', 'lon', 'lat', 'speed', 'course', 'heading', 'type', 'timestamp'])
+        self.mat_list = pd.DataFrame(columns=['ID', 'mmsi', 'lon', 'lat', 'speed', 'course', 'heading', 'type', 'class_name', 'timestamp'])
         # 数据3: 当前时刻的绑定信息
         self.bin_cur  = pd.DataFrame(columns=['ID', 'mmsi', 'timestamp', 'match'])
 
@@ -197,7 +198,7 @@ class FUSPRO(object):
         bin_cur   = pd.DataFrame(columns=['ID', 'mmsi', 'timestamp', 'match'])
 
         mat_list  = pd.DataFrame(columns= \
-            ['ID', 'mmsi', 'lon', 'lat', 'speed', 'course', 'heading', 'type', 'x1', 'y1', 'w', 'h', 'timestamp'])
+            ['ID', 'mmsi', 'lon', 'lat', 'speed', 'course', 'heading', 'type', 'class_name', 'x1', 'y1', 'w', 'h', 'timestamp'])
         
         return mat_cur, bin_cur, mat_las, bin_las, mat_list
     
@@ -318,8 +319,12 @@ class FUSPRO(object):
             w            = abs(x2-x1)
             h            = abs(y2-y1)
             
+            # 提取class_name (VInf_list结构: ID, x1, y1, x2, y2, x, y, class_name, timestamp)
+            # 索引7是class_name
+            class_name   = VInf_list[v_loc][-1][7] if len(VInf_list[v_loc][-1]) > 7 else 'vessel'
+            
             mat_list = mat_list.append({'ID':ID,'mmsi':MMSI,'lon':lon,'lat':lat,\
-                'speed':speed,'course': course,'heading':heading,'type':types,'x1':x1,'y1':y1,\
+                'speed':speed,'course': course,'heading':heading,'type':types,'class_name':class_name,'x1':x1,'y1':y1,\
                     'w':w,'h':h,'timestamp':time}, ignore_index=True)
             # 情况1: 历史存在该匹配对，match=match+1
             if ID_MMSI in mat_las['ID/mmsi'].values:

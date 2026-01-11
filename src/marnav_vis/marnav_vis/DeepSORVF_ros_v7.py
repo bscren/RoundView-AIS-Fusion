@@ -36,7 +36,7 @@ from marnav_vis.config_loader import ConfigLoader
 # 由v4的多线程改为v5的多进程，每个进程独立处理一帧: 包含AIS, VIS, FUS, DRAW
 
 # ------------------------------------------------------
-def multi_proc_worker(input_queue, output_queue, im_shape, t, max_dis, skip_interval = 1, camera_type = "normal"):
+def multi_proc_worker(input_queue, output_queue, im_shape, t, max_dis, skip_interval = 1, camera_type = "normal", yolo_type = "yolo11m"):
     """
     每个进程独立处理一帧: 包含AIS, VIS, FUS, DRAW
      1. 从输入队列获取任务
@@ -87,7 +87,7 @@ def multi_proc_worker(input_queue, output_queue, im_shape, t, max_dis, skip_inte
     print(f"worker process started, pid={os.getpid()}")
 
     aispro = AISPRO(im_shape, t)
-    vispro = VISPRO(1, 0, t)  # 是否读取anti参数可以自定义
+    vispro = VISPRO(1, 0, t, yolo_type)  # 是否读取anti参数可以自定义
     fuspro = FUSPRO(max_dis, im_shape, t)
     dra = DRAW(im_shape, t)
 
@@ -219,6 +219,7 @@ class AisVisNode(Node):
         self.sync_slop = deepsorvf_config.get('sync_slop', 0.1)
         self.skip_interval = deepsorvf_config.get('skip_interval', 1000)
         self.camera_type = deepsorvf_config.get('camera_type', "normal")
+        self.yolo_type = deepsorvf_config.get('yolo_type', "yolo11m")
         
         # 打印配置信息
         self.get_logger().info("="*60)
@@ -232,6 +233,8 @@ class AisVisNode(Node):
         self.get_logger().info(f"输入/输出FPS: {self.input_fps}/{self.output_fps}")
         self.get_logger().info(f"处理间隔: {self.skip_interval} ms")
         self.get_logger().info(f"同步队列: {self.sync_queue_size}, 同步误差: {self.sync_slop}s")
+        self.get_logger().info(f"相机类型: {self.camera_type}")
+        self.get_logger().info(f"YOLO模型类型: {self.yolo_type}")
         self.get_logger().info("="*60)
 
         self.bridge = CvBridge()
@@ -259,7 +262,7 @@ class AisVisNode(Node):
         self.workers = [
             Process(
                 target=multi_proc_worker,
-                args=(self.mp_input_queues[i], self.mp_output_queues[i], self.im_shape, self.t, self.max_dis, self.skip_interval, self.camera_type)
+                args=(self.mp_input_queues[i], self.mp_output_queues[i], self.im_shape, self.t, self.max_dis, self.skip_interval, self.camera_type, self.yolo_type)
             )
             for i in range(self.num_cameras)
         ]
@@ -521,18 +524,21 @@ class AisVisNode(Node):
                     # AIS相关字段，如果不存在则使用默认值
                     msg.ais = 0 if pd.isna(tra.get('ais')) or tra.get('ais') is None else int(tra['ais'])
                     
-                    # 船只类型
-                    # =================================================== DEBUG ===================================================
-                    msg.ship_type = 'cargo ship' # 如果船只类型为空，则默认为cargo ship
-                    # =================================================== DEBUG ===================================================
+                    # 船只类型：从融合结果中获取class_name
+                    class_name_value = tra.get('class_name')
 
+                    if pd.isna(class_name_value) or class_name_value is None or class_name_value == '':
+                        msg.ship_type = 'vessel'  # 默认类型
+                    else:
+                        msg.ship_type = str(class_name_value)
                     # mmsi 必须是无符号整数 [0, 4294967295]，负数转为0
                     mmsi_value = tra.get('mmsi', 0)
                     if pd.isna(mmsi_value) or mmsi_value < 0:
                         msg.mmsi = 0
                     else:
                         msg.mmsi = int(mmsi_value)
-                    
+                    self.get_logger().info(f"最终 msg.mmsi: {msg.mmsi}, msg.ship_type: {msg.ship_type}")
+
                     # 速度和航向，负数转为0.0
                     sog_value = tra.get('sog', 0.0)
                     msg.sog = float(sog_value) if not pd.isna(sog_value) and sog_value >= 0 else 0.0

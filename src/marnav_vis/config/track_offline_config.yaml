@@ -2,9 +2,9 @@
 # 配置说明：请根据实际设备参数修改以下配置
 
 camera:
-  video_path: "/home/tl/RV/src/marnav_vis/clip-01/2022_06_04_12_05_12_12_07_02_b.mp4"
-  camera_start_timestamp: 1654315512000  # 毫秒级时间戳
-  camera_publish_fps: 25
+  video_path: "/home/tl/RV/src/marnav_vis/Datasets/Video-01/2022_05_10_19_21_05_19_31_10_b.mp4"
+  camera_start_timestamp: 1652181664000 # 毫秒级时间戳 1654315512000  
+  camera_publish_fps: 25 # 发布帧率，单位Hz
   width_height: [2560, 1440]  # 注意這個數值應爲輸入視頻的原始尺寸，因爲camera_intrinsic_para是根據這個尺寸設置的
   noise_range_ns: 10000000  # 10毫秒的纳秒表示
   angle_between_cameras: 0 # 相机之间的角度差
@@ -45,15 +45,15 @@ gnss:
   gnss_publish_rate: 5.0
   gnss_pub_topic: "/gnss_topic"
   camera_gnss_para:
-    lon: 114.32583
-    lat: 30.60139
-    horizontal_orientation: 352.0
-    vertical_orientation: -4.0
-    camera_height: 20.0
+    lon: 114.32583333
+    lat: 30.60138888
+    horizontal_orientation: 7.0 # 352.0
+    vertical_orientation: -4.0 # -4.0
+    camera_height: 20.0 # 20.0
 
 ais:
-  ais_csv_folder: "/home/tl/RV/src/marnav_vis/clip-01/ais/"
-  ais_start_timestamp: 1654315512000
+  ais_csv_folder: "/home/tl/RV/src/marnav_vis/Datasets/Video-01/ais/"
+  ais_start_timestamp: 1652181664000 #1654315512000
   ais_csv_topic: "/ais_csv_topic"
   ais_batch_pub_topic: "/ais_batch_topic_offline"
 
@@ -68,3 +68,4 @@ DeepSORVF:
   sync_slop: 0.1 # 同步时间误差
   skip_interval: 1000 # 单位ms，表示在各个相机对应的跟踪进程中，每隔skip_interval ms处理一帧
   camera_type: "normal" # 选择相机类型: normal, fisheye, 
+  yolo_type: "yolo11m" # 选择YOLO模型类型: yolox, yolo11m

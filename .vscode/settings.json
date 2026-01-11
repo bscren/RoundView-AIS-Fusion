@@ -124,12 +124,12 @@
     "python.analysis.diagnosticMode": "workspace",
     "python.languageServer": "None",
     "files.exclude": {
-        "**/install": true,
+        // "**/install": true,
         "**/build": true,
         "**/log": true
     },
     "search.exclude": {
-        "**/install": true,
+        // "**/install": true,
         "**/build": true,
         "**/log": true
     },
