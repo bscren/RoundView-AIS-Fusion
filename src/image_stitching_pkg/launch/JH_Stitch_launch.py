@@ -6,19 +6,26 @@ from launch.actions import (
     DeclareLaunchArgument
 )
 from launch.event_handlers import OnProcessStart
+from ament_index_python.packages import get_package_share_directory
+import os
 
 # 只用yaml文件配置参数的数据集启动方法
 
 def generate_launch_description():
+    # =========== 动态生成配置文件路径 ===========
+    pkg_share_image_stitching = get_package_share_directory('image_stitching_pkg')
+    rtsp_config_file_path = os.path.join(pkg_share_image_stitching, 'config', 'JH_rtsp_config.yaml')
+    stitch_config_file_path = os.path.join(pkg_share_image_stitching, 'config', 'JH_stitch_config.yaml')
+
     # 声明配置文件路径参数
     declare_rtsp_config_file_arg = DeclareLaunchArgument(
         'rtsp_config_file',
-        default_value='/home/tl/RV/src/image_stitching_pkg/config/JH_rtsp_config.yaml',
+        default_value=rtsp_config_file_path,
         description='Path to the RTSP configuration file'
     )
     declare_stitch_config_file_arg = DeclareLaunchArgument(
         'stitch_config_file',
-        default_value='/home/tl/RV/src/image_stitching_pkg/config/JH_stitch_config.yaml',
+        default_value=stitch_config_file_path,
         description='Path to the Stitch configuration file'
     )
     

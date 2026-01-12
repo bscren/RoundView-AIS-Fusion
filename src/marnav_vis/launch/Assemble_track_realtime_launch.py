@@ -5,20 +5,25 @@ from launch.actions import (
     ExecuteProcess, RegisterEventHandler, TimerAction,
     DeclareLaunchArgument
 )
+from ament_index_python.packages import get_package_share_directory
+import os
 # 只用yaml文件配置参数的 实时启动方法
 
 def generate_launch_description():
+    # =========== 动态生成配置文件路径 ===========
+    pkg_share_marnav_vis = get_package_share_directory('marnav_vis')
+    pkg_share_image_stitching = get_package_share_directory('image_stitching_pkg')
     # 声明轨迹跟踪实时配置文件路径参数
     declare_track_realtime_config_file_arg = DeclareLaunchArgument(
         'track_realtime_config_file',
-        default_value='/home/tl/RV/src/marnav_vis/config/track_realtime_config.yaml',
+        default_value=os.path.join(pkg_share_marnav_vis, 'config', 'track_realtime_config.yaml'),
         description='Path to the track realtime configuration file'
     )
     
     # 声明相机发布配置文件路径参数
     declare_rtsp_config_file_arg = DeclareLaunchArgument(
         'rtsp_config_file',
-        default_value='/home/tl/RV/src/image_stitching_pkg/config/JH_rtsp_config.yaml',
+        default_value=os.path.join(pkg_share_image_stitching, 'config', 'JH_rtsp_config.yaml'),
         description='Path to the RTSP configuration file'
     )
 

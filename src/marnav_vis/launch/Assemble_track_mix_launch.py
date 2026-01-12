@@ -5,9 +5,15 @@ from launch.actions import (
     ExecuteProcess, RegisterEventHandler, TimerAction,
     DeclareLaunchArgument
 )
+from ament_index_python.packages import get_package_share_directory
+import os
+
 # 只用yaml文件配置参数的数据集启动方法
 
 def generate_launch_description():
+    # =========== 动态生成配置文件路径 ===========
+    pkg_share_marnav_vis = get_package_share_directory('marnav_vis')
+    pkg_share_image_stitching = get_package_share_directory('image_stitching_pkg')
     # 声明配置文件路径参数
     declare_track_offline_config_file_arg = DeclareLaunchArgument(
         'track_offline_config_file',

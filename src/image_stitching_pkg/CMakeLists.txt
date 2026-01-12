@@ -78,7 +78,7 @@ set(CUDA_LIBS cudart)
 # 可执行文件配置
 ## 1. 离线拼接测试节点
 add_executable(image_stitching_node 
-  src/module_stitchfunction_test.cpp
+  src/module_test_stitchfunction.cpp
 )  # 补充闭合括号
 
 ## 2. RTSP实时拼接节点

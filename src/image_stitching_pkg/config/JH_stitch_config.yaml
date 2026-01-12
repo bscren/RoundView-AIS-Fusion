@@ -16,13 +16,13 @@ parameters:
     # 订阅的相机配置列表（支持动态增减相机数量）
     cameras:
       - camera_name: "camera_0"           # 相机名称（用于映射）
-        topic_name: "/rtsp_image_0"   # 相机0的话题名 rtsp_image_2 / camera_image_topic_0
+        topic_name: "/camera_image_topic_0"   # 相机0的话题名 rtsp_image_2 / camera_image_topic_0
         camera_index: 0                       # 相机索引
       - camera_name: "camera_1"           # 相机名称（用于映射）
-        topic_name: "/rtsp_image_1"   # 相机1的话题名
+        topic_name: "/camera_image_topic_1"   # 相机1的话题名
         camera_index: 1                       # 相机索引
       - camera_name: "camera_2"           # 相机名称（用于映射）
-        topic_name: "/rtsp_image_2"   # 相机2的话题名 
+        topic_name: "/camera_image_topic_2"   # 相机2的话题名 
         camera_index: 2                       # 相机索引
     # 如需添加更多相机，按照上面的格式继续添加即可
     
@@ -45,7 +45,7 @@ parameters:
     iou_threshold: 0.1               # 目标检测框IOU筛选阈值
     scale: 0.5                       # 图像缩放比例
     cropornot: true                  # 是否裁剪全景图 
-    drawboxornot: false               # 是否绘制检测框
+    drawboxornot: true               # 是否绘制检测框
     save_CameraParams: false         # 是否保存相机K R T参数
     save_CameraParams_path: "src/image_stitching_pkg/config/CameraParams_TestSet.yaml" # 保存相机K R T参数的文件路径
     use_saved_CameraParams: true     # 是否使用已保存的相机K R T参数

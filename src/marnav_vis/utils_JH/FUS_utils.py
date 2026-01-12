@@ -121,12 +121,12 @@ def traj_group(df_data, df_dataCur,  kind):
                 trajData_list.append(np.array(traj[:, 7:9])) # 提取x7,y8位置
                 trajLabel_list.append(int(traj[0, 0]))
                 trajInf_list.append(traj)
-            else:
-                print(f"    mmsi {value}: 不在当前时刻，跳过")
+            # else:
+            #     print(f"    mmsi {value}: 不在当前时刻，跳过")
         
-        if len(trajData_list) == 0:
-            print(f"  [traj_group AIS] ⚠️ 没有提取到任何AIS轨迹！")
-            # print(f"    可能原因：df_dataCur中的mmsi不在df_data中")
+        # if len(trajData_list) == 0:
+        #     print(f"  [traj_group AIS] ⚠️ 没有提取到任何AIS轨迹！")
+        #     print(f"    可能原因：df_dataCur中的mmsi不在df_data中")
     
     # 3.VIS数据分组
     elif kind == 'VIS':
@@ -152,8 +152,8 @@ def traj_group(df_data, df_dataCur,  kind):
                 trajData_list.append(np.array(traj[:, 5:7]))
                 trajLabel_list.append(int(traj[0][0]))
                 trajInf_list.append(traj)
-            else:
-                print(f"    ID {value}: 不在当前时刻，跳过")
+            # else:
+                # print(f"    ID {value}: 不在当前时刻，跳过")
         
         if len(trajData_list) == 0:
             print(f"  [traj_group VIS] ⚠️ 没有提取到任何VIS轨迹！")
