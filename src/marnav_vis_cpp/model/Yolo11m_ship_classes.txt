@@ -1,7 +1,0 @@
-Buoy
-Cargo Ship
-Coast Guard Ship
-Harbor Tug
-Hopper Dredger
-Lighthouse
-Ship

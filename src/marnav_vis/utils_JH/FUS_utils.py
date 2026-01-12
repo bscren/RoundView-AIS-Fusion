@@ -24,7 +24,7 @@ def angle(v1, v2):
     
     # 如果轨迹点太少（小于2个），无法计算方向，返回0（认为方向一致）
     if len(v1) < 2 or len(v2) < 2:
-        print(f"  [angle] 轨迹点不足: VIS={len(v1)}, AIS={len(v2)}, 返回0度")
+        # print(f"  [angle] 轨迹点不足: VIS={len(v1)}, AIS={len(v2)}, 返回0度")
         return 0
     
     if len(v1) >= 10: # VIS取最近10个点计算方向
@@ -43,10 +43,10 @@ def angle(v1, v2):
     
     # 检查是否有移动（避免除以0）
     if dx1 == 0 and dy1 == 0:
-        print(f"  [angle] VIS轨迹无移动，返回0度")
+        # print(f"  [angle] VIS轨迹无移动，返回0度")
         return 0
     if dx2 == 0 and dy2 == 0:
-        print(f"  [angle] AIS轨迹无移动，返回0度")
+        # print(f"  [angle] AIS轨迹无移动，返回0度")
         return 0
     
     angle1 = math.atan2(dy1, dx1)
@@ -101,10 +101,10 @@ def traj_group(df_data, df_dataCur,  kind):
     # 2.AIS数据分组
     if kind == 'AIS':
         if df_data.empty:
-            print(f"  [traj_group AIS] ⚠️ df_data 为空！")
+            # print(f"  [traj_group AIS] ⚠️ df_data 为空！")
             return trajData_list, trajLabel_list, trajInf_list
         if df_dataCur.empty:
-            print(f"  [traj_group AIS] ⚠️ df_dataCur 为空！")
+            # print(f"  [traj_group AIS] ⚠️ df_dataCur 为空！")
             return trajData_list, trajLabel_list, trajInf_list
             
         grouped = df_data.groupby('mmsi')
@@ -146,7 +146,7 @@ def traj_group(df_data, df_dataCur,  kind):
             # 仅记录历史中符合当前时刻存在的船
             if value in cur_id_list:
                 traj = group.values
-                print(f"    ID {value}: 提取 {len(traj)} 个轨迹点")
+                # print(f"    ID {value}: 提取 {len(traj)} 个轨迹点")
                 
                 # 提取 x, y 坐标（列索引 5:7）
                 trajData_list.append(np.array(traj[:, 5:7]))
@@ -247,10 +247,10 @@ class FUSPRO(object):
                     if dis < self.max_dis and theta < math.pi*(5/6): 
                         dtw_dist = DTW_fast(VIS_list[i], AIS_list[j])
                         matrix_S[i][j] = dtw_dist
-                        print(f"    ID {int(cur_ID)} <-> mmsi {int(cur_mmsi)}: dis={dis:.1f}, theta={theta:.3f}, DTW={dtw_dist:.2f}")
+                        # print(f"    ID {int(cur_ID)} <-> mmsi {int(cur_mmsi)}: dis={dis:.1f}, theta={theta:.3f}, DTW={dtw_dist:.2f}")
                     else:
                         matrix_S[i][j] = 1000000000
-                        print(f"    ID {int(cur_ID)} <-> mmsi {int(cur_mmsi)}: dis={dis:.1f} (max={self.max_dis}), theta={theta:.3f} => 距离或角度超限，排除")
+                        # print(f"    ID {int(cur_ID)} <-> mmsi {int(cur_mmsi)}: dis={dis:.1f} (max={self.max_dis}), theta={theta:.3f} => 距离或角度超限，排除")
 
                 # 情况2: 存在绑定信息时，极小值
                 elif cur_IDmmsi in binIDmmsi:
@@ -271,7 +271,7 @@ class FUSPRO(object):
         # 1.初始化
         matches = []
 
-        print(f"  [data_filter] 匈牙利算法输出 {len(row_ind)} 个匹配对，开始过滤...")
+        # print(f"  [data_filter] 匈牙利算法输出 {len(row_ind)} 个匹配对，开始过滤...")
         
         # 2.删除过远或角度过大数据
         for row, col in zip(row_ind, col_ind):
@@ -287,12 +287,12 @@ class FUSPRO(object):
             
             # 判断是否保存
             passed = dis < self.max_dis and theta < math.pi*(5/6)
-            print(f"    VIS[{row}] <-> AIS[{col}]: dis={dis:.1f} (max={self.max_dis}), theta={theta:.3f} (max={math.pi*5/6:.3f}) => {'通过' if passed else '过滤'}")
+            # print(f"    VIS[{row}] <-> AIS[{col}]: dis={dis:.1f} (max={self.max_dis}), theta={theta:.3f} (max={math.pi*5/6:.3f}) => {'通过' if passed else '过滤'}")
             
             if passed:
                 matches.append((row, col))
         
-        print(f"  [data_filter] 过滤后剩余 {len(matches)} 个匹配对")
+        # print(f"  [data_filter] 过滤后剩余 {len(matches)} 个匹配对")
         return matches
     
     def save_data(self, mat_cur, bin_cur, mat_las, bin_las, mat_list,\
@@ -396,24 +396,24 @@ class FUSPRO(object):
         VIS_list, VIS_IDlist, VInf_list = traj_group(Vis_tra, Vis_cur, 'VIS')
         
         # 调试信息
-        print(f"[FUSION DEBUG] timestamp={timestamp}")
-        print(f"  AIS_vis shape: {AIS_vis.shape}, AIS_cur shape: {AIS_cur.shape}")
-        print(f"  Vis_tra shape: {Vis_tra.shape}, Vis_cur shape: {Vis_cur.shape}")
-        print(f"  AIS_list count: {len(AIS_list)}, VIS_list count: {len(VIS_list)}")
-        if len(AIS_list) > 0:
-            print(f"  AIS轨迹点数: {[len(traj) for traj in AIS_list]}")
-        if len(VIS_list) > 0:
-            print(f"  VIS轨迹点数: {[len(traj) for traj in VIS_list]}")
+        # print(f"[FUSION DEBUG] timestamp={timestamp}")
+        # print(f"  AIS_vis shape: {AIS_vis.shape}, AIS_cur shape: {AIS_cur.shape}")
+        # print(f"  Vis_tra shape: {Vis_tra.shape}, Vis_cur shape: {Vis_cur.shape}")
+        # print(f"  AIS_list count: {len(AIS_list)}, VIS_list count: {len(VIS_list)}")
+        # if len(AIS_list) > 0:
+        #     print(f"  AIS轨迹点数: {[len(traj) for traj in AIS_list]}")
+        # if len(VIS_list) > 0:
+        #     print(f"  VIS轨迹点数: {[len(traj) for traj in VIS_list]}")
         
         # 2.轨迹匹配
         self.mat_list, self.mat_cur, self.bin_cur = self.traj_match(
             AIS_list, AIS_MMSIlist, VIS_list, VIS_IDlist, AInf_list, VInf_list, timestamp)
         
-        print(f"  融合结果 mat_list shape: {self.mat_list.shape}")
-        if not self.mat_list.empty:
-            print(f"  成功融合: {list(self.mat_list['ID'].unique())}")
-        else:
-            print(f"  融合失败: mat_list为空")
+        # print(f"  融合结果 mat_list shape: {self.mat_list.shape}")
+        # if not self.mat_list.empty:
+        #     print(f"  成功融合: {list(self.mat_list['ID'].unique())}")
+        # else:
+        #     print(f"  融合失败: mat_list为空")
             
         return self.mat_list, self.bin_cur
 

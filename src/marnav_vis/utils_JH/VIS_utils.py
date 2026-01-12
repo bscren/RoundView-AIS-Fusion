@@ -185,7 +185,7 @@ def id_whether_stable(id, last_5_trajs):
 
 # 目标检测跟踪
 class VISPRO(object):
-    def __init__(self, anti, val, t, yolo_type ="yolo11m"):
+    def __init__(self, anti, val, t):
         self.anti = anti
         self.val = val
         self.t = t
@@ -199,8 +199,8 @@ class VISPRO(object):
         self.OAR_mmsi_list = []
         self.Anti_occlusion_traj = pd.DataFrame(columns=['ID','x1','y1','x2','y2','x','y','class_name','speed','timestamp'])
 
-        # 初始化目标检测
-        self.yolo = YOLO(yolo_type=yolo_type)
+        # 初始化目标检测，在主进程中初始化
+        # self.yolo = YOLO(yolo_type=yolo_type)
 
         # 初始化跟踪模型
         self.cfg = get_config()
@@ -431,11 +431,11 @@ class VISPRO(object):
         return bboxes_anti_occ
 
         
-    def feedCap(self, image, AIS_vis, bind_inf, timestamp):            
+    def feedCap(self, image, detection_results, AIS_vis, bind_inf, timestamp):            
         # 1.1.目标检测框生成
-        bboxes = self.detection(image)
+        bboxes = detection_results
         # print(bboxes)
-        print(f"[VIS DEBUG] timestamp={timestamp}, 检测到 {len(bboxes)} 个目标")
+        # print(f"[VIS DEBUG] timestamp={timestamp}, 检测到 {len(bboxes)} 个目标")
 
         # 1.2.抗遮挡
         bboxes_anti_occ = self.anti_occ(self.last5_vis_tra_list, bboxes, AIS_vis, bind_inf, timestamp // 1000)
@@ -444,21 +444,21 @@ class VISPRO(object):
         # print(bboxes_anti_occ)
         self.track(image, bboxes, bboxes_anti_occ=bboxes_anti_occ,\
                 id_list=self.OAR_ids_list, timestamp=timestamp // 1000) # 触发 track 跟踪 是 “每帧 1 次”（视频帧率通常是 25/30 帧 / 秒）
-        print(f"[VIS DEBUG] track后 Vis_tra_cur_3 shape: {self.Vis_tra_cur_3.shape}")
+        # print(f"[VIS DEBUG] track后 Vis_tra_cur_3 shape: {self.Vis_tra_cur_3.shape}")
 
         # 轨迹数据更新
-        print(f"[VIS DEBUG] update_tra前 Vis_tra_cur_3 shape: {self.Vis_tra_cur_3.shape}, IDs: {list(self.Vis_tra_cur_3['ID'].unique()) if not self.Vis_tra_cur_3.empty else []}")
+        # print(f"[VIS DEBUG] update_tra前 Vis_tra_cur_3 shape: {self.Vis_tra_cur_3.shape}, IDs: {list(self.Vis_tra_cur_3['ID'].unique()) if not self.Vis_tra_cur_3.empty else []}")
         
         Vis_tra_cur = self.Vis_tra_cur
         # if timestamp % 1000 < self.t:
         Vis_tra_cur = self.update_tra(self.Vis_tra, timestamp) # update_tra 方法的调用时机是 "每秒 1 次"（由 timestamp // 1000 秒级时间戳控制）
-        print(f"[VIS DEBUG] update_tra后 Vis_tra shape: {self.Vis_tra.shape}, Vis_tra_cur shape: {Vis_tra_cur.shape}")
+        # print(f"[VIS DEBUG] update_tra后 Vis_tra shape: {self.Vis_tra.shape}, Vis_tra_cur shape: {Vis_tra_cur.shape}")
         if not self.Vis_tra.empty:
-            print(f"  Vis_tra ID列表: {list(self.Vis_tra['ID'].unique())}")
+            # print(f"  Vis_tra ID列表: {list(self.Vis_tra['ID'].unique())}")
             # 统计每个ID的轨迹点数
             for vid in self.Vis_tra['ID'].unique():
                 count = len(self.Vis_tra[self.Vis_tra['ID'] == vid])
-                print(f"    ID {vid}: {count} 个轨迹点")
+                # print(f"    ID {vid}: {count} 个轨迹点")
         else:
             print(f"  ⚠️ Vis_tra 为空！")
         

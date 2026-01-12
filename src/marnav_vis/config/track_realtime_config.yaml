@@ -4,7 +4,7 @@
 camera:
   camera_publish_fps: 25
   width_height: [1280, 720]  # 使用数组格式便于ROS2传递，這個尺寸要和當前的相機內參一致，否則AIS無法正常融合
-  angle_between_cameras: 60 # 相机之间的角度差
+  angle_between_cameras: 75 # 相机之间的角度差
   camera_parameters: # 相机配置列表（支持动态增减相机数量）
     - camera_name: "camera_0"           # 相机名称（用于映射）
       topic_name: "/rtsp_image_0"   # 相机0的话题名

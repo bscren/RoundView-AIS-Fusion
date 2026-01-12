@@ -6,6 +6,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from PIL import ImageDraw, ImageFont
+from ament_index_python.packages import get_package_share_directory
 
 from .nets.yolo import YoloBody
 from .utils.utils import cvtColor, get_classes, preprocess_input, resize_image
@@ -25,8 +26,8 @@ class YOLO(object):
         #--------------------------------------------------------------------------#
         # "model_path"        : 'detection_yolox/model_data/YOLOX-final.pth',
         # "classes_path"      : 'detection_yolox/model_data/ship_classes.txt',
-        "model_path"        : '/home/tl/RV/src/marnav_vis/detection_yolox/model_data/YOLOX-final.pth',
-        "classes_path"      : '/home/tl/RV/src/marnav_vis/detection_yolox/model_data/ship_classes.txt',
+        "model_path"        : None,  # 初始化时动态设置
+        "classes_path"      : None,  # 初始化时动态设置
         #---------------------------------------------------------------------#
         #   输入图片的大小，必须为32的倍数。
         #---------------------------------------------------------------------#
@@ -73,20 +74,28 @@ class YOLO(object):
         if yolo_type is None:
             raise ValueError("yolo_type 参数不能为 None")
         self.yolo_type = str(yolo_type).strip().lower()
-        
-        # 支持多种可能的变体
+
+        # 获取包共享目录
+        package_share_dir = get_package_share_directory('marnav_vis')
+        model_data_dir = os.path.join(package_share_dir, 'detection_yolox', 'model_data')
+
         # YOLOX模型
         if self.yolo_type in ['yolox']:
+            if self.model_path is None:
+                self.model_path = os.path.join(model_data_dir, 'YOLOX-final.pth')
+            if self.classes_path is None:
+                self.classes_path = os.path.join(model_data_dir, 'ship_classes.txt')
             #   获得种类和先验框的数量
             self.class_names, self.num_classes  = get_classes(self.classes_path)
             #   画框设置不同的颜色
-            hsv_tuples = [(x / self.num_classes, 1., 1.) for x in range(    self.num_classes)]
+            hsv_tuples = [(x / self.num_classes, 1., 1.) for x in range(self.num_classes)]
             self.colors = list(map(lambda x: colorsys.hsv_to_rgb(*x), hsv_tuples))
             self.colors = list(map(lambda x: (int(x[0] * 255), int(x[1] * 255), int(x[2] * 255)), self.colors))
             self.generate()
         # YOLOv11模型
         elif self.yolo_type in ['yolo11m', 'yolov11', 'yolo11', 'yolov11m']:
-            self.model = UltralyticsYOLO('/home/tl/RV/src/marnav_vis/detection_yolox/model_data/Yolo11m.pt')
+            model_path = os.path.join(model_data_dir, 'Yolo11m.pt')
+            self.model = UltralyticsYOLO(model_path)
         else:
             raise ValueError(f"不支持的 YOLO 模型类型: '{self.yolo_type}' (原始值: '{yolo_type}', 类型: {type(yolo_type)}). 支持的类型: 'yolox', 'yolo11m', 'yolov11', 'yolo11', 'yolov11m'")
     #---------------------------------------------------#
@@ -168,8 +177,8 @@ class YOLO(object):
 
             return out
         elif self.yolo_type in ['yolo11m', 'yolov11', 'yolo11', 'yolov11m']:
-            # ultralytics YOLO 返回 Results 对象
-            results = self.model(image)
+            # ultralytics YOLO 返回 Results 对象,关闭verbose输出
+            results = self.model(image, verbose=False)
             out = []
             # 处理第一个结果（通常只有一张图片）
             if len(results) > 0:

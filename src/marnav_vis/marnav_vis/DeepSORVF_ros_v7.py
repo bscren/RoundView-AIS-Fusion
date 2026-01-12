@@ -7,6 +7,7 @@ import os
 import time
 import imutils
 
+
 import cv2
 import pandas as pd
 import numpy as np
@@ -32,6 +33,24 @@ from utils_JH.FUS_utils import FUSPRO
 from utils_JH.gen_result import gen_result
 from utils_JH.draw import DRAW
 from marnav_vis.config_loader import ConfigLoader
+
+# 改为在此处导入YOLO模型（需要在主进程中初始化），避免在多进程中重复初始化
+from detection_yolox.yolo import YOLO
+from PIL import Image as PILImage
+
+class DetectionModel(object):
+    """
+    单实例YOLO检测器，避免多进程重复加载模型造成GPU内存浪费
+    """
+    def __init__(self, yolo_type = "yolo11m"):
+        print(f"DetectionModel initialized with yolo_type: {yolo_type}")
+        self.yolo = YOLO(yolo_type=yolo_type)
+
+    def detect_object(self, image):
+        im0 = cv2.cvtColor(image,cv2.COLOR_BGR2RGB)
+        im0 = PILImage.fromarray(im0)
+        bboxes = self.yolo.detect_image(im0)
+        return bboxes
 
 # 由v4的多线程改为v5的多进程，每个进程独立处理一帧: 包含AIS, VIS, FUS, DRAW
 
@@ -87,7 +106,7 @@ def multi_proc_worker(input_queue, output_queue, im_shape, t, max_dis, skip_inte
     print(f"worker process started, pid={os.getpid()}")
 
     aispro = AISPRO(im_shape, t)
-    vispro = VISPRO(1, 0, t, yolo_type)  # 是否读取anti参数可以自定义
+    vispro = VISPRO(1, 0, t)  # 是否读取anti参数可以自定义
     fuspro = FUSPRO(max_dis, im_shape, t)
     dra = DRAW(im_shape, t)
 
@@ -102,7 +121,8 @@ def multi_proc_worker(input_queue, output_queue, im_shape, t, max_dis, skip_inte
             break
         try:
             cam_idx = task["cam_idx"]
-            cv_image = task["cv_image"]
+            cv_image = task["cv_image"] # 原始图像用于绘图
+            detection_results = task["detection_results"] # 视觉目标检测结果
             current_timestamp = task["current_timestamp"]
             ais_batch = task["ais_batch"]
             camera_pos_para = task["camera_pos_para"]
@@ -120,7 +140,7 @@ def multi_proc_worker(input_queue, output_queue, im_shape, t, max_dis, skip_inte
                 # 1. AIS
                 AIS_vis, AIS_cur = aispro.process(ais_batch, camera_pos_para, current_timestamp, camera_type)
                 # 2. VIS
-                Vis_tra, Vis_cur = vispro.feedCap(cv_image, AIS_vis, bin_inf, current_timestamp)
+                Vis_tra, Vis_cur = vispro.feedCap(cv_image, detection_results, AIS_vis, bin_inf, current_timestamp)
                 # 3. FUS
                 Fus_tra, updated_bin = fuspro.fusion(AIS_vis, AIS_cur, Vis_tra, Vis_cur, current_timestamp)
                 # 4. DRAW
@@ -256,6 +276,10 @@ class AisVisNode(Node):
         self.latest_processed_images = {
             self.camera_topics[i]: blank_image.copy() for i in range(self.num_cameras)
         }
+
+        # 单实例YOLO检测器
+        self.detection_model = DetectionModel(yolo_type=self.yolo_type)
+
         # ============ 多进程池核心部分（每摄像头一个进程） ===============
         self.mp_input_queues = [Queue(maxsize=10) for _ in range(self.num_cameras)]
         self.mp_output_queues = [Queue(maxsize=10) for _ in range(self.num_cameras)]
@@ -332,8 +356,15 @@ class AisVisNode(Node):
         # self.get_logger().info(f"收到同步相机帧，共{len(msgs)}帧")
         cv_images = [self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8') for msg in msgs]
         current_timestamp = msgs[0].header.stamp.sec * 1000 + msgs[0].header.stamp.nanosec // 1000000
+        
+        # 在主进程中执行YOLO检测，避免多进程重复加载模型
+        detection_results = []
+        for img in cv_images:
+            detection_results.append(self.detection_model.detect_object(img))
+
+        # 遍历每个相机，提交任务给对应摄像头的进程
         for cam_idx in range(self.num_cameras):
-            if cam_idx >= len(cv_images):
+            if cam_idx >= len(cv_images) or cam_idx >= len(detection_results):
                 continue
 
              # 检查 camera_pos_para 和 bin_inf 是否完整
@@ -347,12 +378,17 @@ class AisVisNode(Node):
                 self.get_logger().warning(f"bin_inf[{cam_idx}] 缺失或类型错误，内容：{self.bin_inf[cam_idx] if len(self.bin_inf) > cam_idx else 'None'}，跳过该帧")
                 continue
 
+            # 确保检测结果是列表类型
+            if not isinstance(detection_results[cam_idx], list):
+                self.get_logger().warning(f"detection_results[{cam_idx}] 类型错误: {type(detection_results[cam_idx])}，跳过该帧")
+                continue
 
-            # 提交任务给对应摄像头的进程
+            # 提交任务给对应摄像头的进程，包括原始图像、检测结果、时间戳、AIS数据、相机位置参数、绑定信息
             try:
                 self.mp_input_queues[cam_idx].put_nowait({
                     "cam_idx": cam_idx,
                     "cv_image": cv_images[cam_idx],
+                    "detection_results": detection_results[cam_idx],
                     "current_timestamp": current_timestamp,
                     "ais_batch": self.aisbatch_cache,
                     "camera_pos_para": self.camera_pos_para[cam_idx],
@@ -387,7 +423,7 @@ class AisVisNode(Node):
         self.gnss_cache = msg
         
         # 更新相机位置信息，以中间相机为正前方
-        # 左右相机的水平朝向分别调整-60和+60度
+        # 左右相机的水平朝向分别调整-75和+75度
         for idx, topic in enumerate(self.camera_topics):
             # 计算水平朝向（中间相机不变，左右相机调整±N度,N为相机之间的夹角）
             horizontal_orientation = (msg.horizontal_orientation + (idx - 1) * self.angle_between_cameras) % 360
@@ -537,7 +573,7 @@ class AisVisNode(Node):
                         msg.mmsi = 0
                     else:
                         msg.mmsi = int(mmsi_value)
-                    self.get_logger().info(f"最终 msg.mmsi: {msg.mmsi}, msg.ship_type: {msg.ship_type}")
+                    # self.get_logger().info(f"最终 msg.mmsi: {msg.mmsi}, msg.ship_type: {msg.ship_type}")
 
                     # 速度和航向，负数转为0.0
                     sog_value = tra.get('sog', 0.0)

@@ -27,7 +27,8 @@ setup(
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
-        (os.path.join('share', package_name, 'launch'), glob('launch/*.py')),
+        (f'share/{package_name}/launch', glob('launch/*.py')),
+        # 把config目录下的配置文件安装到包的share目录下
         (f'share/{package_name}/config', [
             'config/camera_0_param_location.txt',
             'config/camera_1_param_location.txt',
@@ -35,9 +36,10 @@ setup(
             'config/track_offline_config.yaml',  # 添加YAML配置文件
             'config/track_realtime_config.yaml'  # 添加YAML配置文件
         ]),
-        (f'share/{package_name}/detection_yolox/model_data', 
-            ['detection_yolox/model_data/ship_classes.txt', 
-             'detection_yolox/model_data/yolo_anchors.txt'])
+        # 把deep_sort/configs目录:track function安装到包的share目录下
+        (f'share/{package_name}/deep_sort/configs', glob('deep_sort/configs/*.yaml')),
+        # 把detection_yolox/model_data目录:detection function安装到包的share目录下
+        (f'share/{package_name}/detection_yolox/model_data', glob('detection_yolox/model_data/*'))
     ],
     install_requires=['setuptools', 'easydict==1.11', 'fastdtw', 'pyyaml'],
     zip_safe=True,
