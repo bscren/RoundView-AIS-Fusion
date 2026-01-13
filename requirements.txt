@@ -18,9 +18,9 @@ motmetrics==1.4.0
 fastdtw==0.3.4
 ultralytics==8.3.173
 ultralytics-thop==2.0.14
-torch==2.7.0
-torchvision==0.22.0
-torchaudio==2.7.0
+torch==2.7.0+cu118
+torchvision==0.22.0+cu118
+torchaudio==2.7.0+cu118
 triton==3.3.0
 pyserial==3.5
 psutil==7.0.0
