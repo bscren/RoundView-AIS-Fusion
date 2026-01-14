@@ -36,9 +36,11 @@ setup(
             'config/track_offline_config.yaml',  # 添加YAML配置文件
             'config/track_realtime_config.yaml'  # 添加YAML配置文件
         ]),
-        # 把deep_sort/configs目录:track function安装到包的share目录下
+        # 把deep_sort/configs目录:track function 安装到包的share目录下
         (f'share/{package_name}/deep_sort/configs', glob('deep_sort/configs/*.yaml')),
-        # 把detection_yolox/model_data目录:detection function安装到包的share目录下
+        # 把deep_sort权重文件安装到包的share目录下，运行时按相对路径查找
+        (f'share/{package_name}/deep_sort/deep_sort/deep/checkpoint', glob('deep_sort/deep_sort/deep/checkpoint/*')),
+        # 把detection_yolox/model_data目录:detection function 安装到包的share目录下
         (f'share/{package_name}/detection_yolox/model_data', glob('detection_yolox/model_data/*'))
     ],
     install_requires=['setuptools', 'easydict==1.11', 'fastdtw', 'pyyaml'],

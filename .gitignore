@@ -6,5 +6,6 @@ methodsCompare/
 result/
 ROS2BAG/
 VideonImage/
-dataset/
+Datasets/
+record_dataset/
 src/marnav_vis/Datasets/*

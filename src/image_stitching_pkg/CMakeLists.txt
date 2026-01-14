@@ -34,7 +34,9 @@ find_package(marnav_interfaces REQUIRED)
 # # 使用pkg-config查找OpenCV 4.8.0（替代find_package，解决cmake配置文件缺失问题）
 # find_package(PkgConfig REQUIRED)
 # pkg_check_modules(OpenCV REQUIRED opencv4)  # 依赖pkg-config的opencv4配置
-find_package(OpenCV 4 REQUIRED COMPONENTS core imgproc imgcodecs highgui stitching xfeatures2d)
+# find_package(OpenCV 4 REQUIRED COMPONENTS core imgproc imgcodecs highgui stitching xfeatures2d)
+# 不用无专利方法 的xfeatures2d模块
+find_package(OpenCV 4 REQUIRED COMPONENTS core imgproc imgcodecs highgui stitching)
 
 # 配置头文件搜索路径（关键步骤）
 include_directories(

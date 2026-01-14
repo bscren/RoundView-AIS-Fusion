@@ -20,8 +20,8 @@
 
 
 #ifdef HAVE_OPENCV_XFEATURES2D // 条件编译，检查是否包含特征检测模块
-#include "opencv2/xfeatures2d.hpp" // 引入扩展特征检测模块
-#include "opencv2/xfeatures2d/nonfree.hpp" // 引入非自由特征检测模块（如SIFT、SURF等）
+// #include "opencv2/xfeatures2d.hpp" // 引入扩展特征检测模块
+// #include "opencv2/xfeatures2d/nonfree.hpp" // 引入非自由特征检测模块（如SIFT、SURF等）
 #endif
 
 #ifdef HAVE_OPENCV_CUDALEGACY
@@ -481,7 +481,9 @@ int main(int argc, char* argv[])
 #ifdef HAVE_OPENCV_XFEATURES2D
     else if (features_type == "surf")
     {
-        finder = xfeatures2d::SURF::create();
+        cout << "xfeatures2d features are not available in this build of OpenCV.\n";
+        return -1;
+        // finder = xfeatures2d::SURF::create();
     }
 #endif
     else if (features_type == "sift")

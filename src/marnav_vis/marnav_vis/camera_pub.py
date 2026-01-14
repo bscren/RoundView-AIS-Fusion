@@ -10,6 +10,8 @@ import time
 from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy
 import numpy as np
 from marnav_vis.config_loader import ConfigLoader
+from ament_index_python.packages import get_package_share_directory
+import os
 
 
 class CameraPubNode(Node):
@@ -44,6 +46,26 @@ class CameraPubNode(Node):
         self.camera_microtimestamp = camera_config.get('camera_start_timestamp', 0)
         self.noise_range_ns = camera_config.get('noise_range_ns', 10000000)
         
+        # video_path 添加动态链接
+        if not os.path.isabs(self.video_path):
+            current_file = os.path.abspath(__file__)
+            # 从当前文件路径向上遍历，找到包含Datasets和src的目录（RV根）
+            workspace_root = None
+            current_dir = os.path.dirname(current_file)
+            # 最多向上遍历10层，避免死循环
+            for _ in range(10):
+                # 检查当前目录是否是RV根（有Datasets和src文件夹）
+                if os.path.exists(os.path.join(current_dir, 'Datasets')) and os.path.exists(os.path.join(current_dir, 'src')):
+                    workspace_root = current_dir
+                    break
+                current_dir = os.path.dirname(current_dir)
+            
+            if not workspace_root:
+                self.get_logger().error("❌ 无法找到RV工作空间根目录！")
+                raise RuntimeError("工作空间根目录定位失败")
+            
+            self.video_path = os.path.join(workspace_root, self.video_path)
+
         # 提取相机话题列表
         self.camera_parameters = camera_config.get('camera_parameters',[])
         self.camera_topics = [cam['topic_name'] for cam in self.camera_parameters]
@@ -66,11 +88,17 @@ class CameraPubNode(Node):
         self.get_logger().info("="*60)
 
         self.cap = cv2.VideoCapture(self.video_path)
+        # 
+
 
         # 获取视频的原始帧率和尺寸
         self.video_fps = self.cap.get(cv2.CAP_PROP_FPS)
         self.video_width = self.cap.get(cv2.CAP_PROP_FRAME_WIDTH)
         self.video_height = self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
+        # 检测是否为空
+        if self.video_fps == 0 or self.video_width == 0 or self.video_height == 0:
+            self.get_logger().error(f"无法获取视频信息，请检查视频文件是否有效: {self.video_path}")
+            return
         self.t = 1000/self.video_fps # 毫秒每帧
         self.get_logger().info(f"Original video FPS: {self.video_fps}, Width: {self.video_width}, Height: {self.video_height}, Frame interval: {self.t} ms")
 

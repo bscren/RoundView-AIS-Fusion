@@ -10,7 +10,7 @@ find_package(ament_cmake REQUIRED)
 find_package(ament_index_cpp REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
-find_package(GeographicLib REQUIRED)
+# find_package(GeographicLib REQUIRED)
 find_package(marnav_interfaces REQUIRED)
 find_package(Boost REQUIRED COMPONENTS system)
 find_package(yaml-cpp REQUIRED)
@@ -58,19 +58,19 @@ include_directories(
 
 # ========== 3. 链接 marnav 库到你的目标（AIS 解析节点） ==========
 # 原版节点（完整解析AIVDM/RMC/GGA）
-add_executable(ais_parser_pub_node src/ais_parser_pub_node.cpp)  
-target_link_libraries(ais_parser_pub_node  
-    marnav  
-    rclcpp::rclcpp
-    ${LIBSERIAL_LIBRARY}
-    Boost::system
-    GeographicLib::GeographicLib
-)  
-ament_target_dependencies(ais_parser_pub_node  
-    rclcpp  
-    std_msgs
-    marnav_interfaces
-)
+# add_executable(ais_parser_pub_node src/ais_parser_pub_node.cpp)  
+# target_link_libraries(ais_parser_pub_node  
+#     marnav  
+#     rclcpp::rclcpp
+#     ${LIBSERIAL_LIBRARY}
+#     Boost::system
+#     GeographicLib::GeographicLib
+# )  
+# ament_target_dependencies(ais_parser_pub_node  
+#     rclcpp  
+#     std_msgs
+#     marnav_interfaces
+# )
 
 # V2版节点（仅解析AIVDM，批量发布）
 add_executable(ais_parser_batch_pub_node src/ais_parser_batch_pub_node.cpp)  
@@ -104,7 +104,7 @@ ament_target_dependencies(gnss_parser_pub_node
 
 # ========== 4. 安装可执行文件（让 ROS2 能找到） ==========
 install(TARGETS  
-    ais_parser_pub_node
+    # ais_parser_pub_node
     ais_parser_batch_pub_node
     gnss_parser_pub_node
     DESTINATION lib/${PROJECT_NAME}  

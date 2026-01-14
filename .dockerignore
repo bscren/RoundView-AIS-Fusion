@@ -1,0 +1,16 @@
+# 排除ROS2编译目录
+
+build/
+install/
+log/
+Datasets/
+record_dataset/
+result/
+VideonImage/
+
+# 排除其他无用文件
+*.log
+*.swp
+.DS_Store
+__pycache__/
+*.pyc

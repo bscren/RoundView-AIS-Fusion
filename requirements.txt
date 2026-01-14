@@ -1,4 +1,4 @@
-# 除 ROS /  CUDA 的运行时依赖；ROS2 与 CUDA11.8 请用 apt/发行版方式安装
+# 除 ROS /  CUDA / Python3.10 的运行时依赖；请用 apt/发行版方式安装
 numpy==1.26.4
 pandas==1.3.5
 opencv-python==4.8.0.76
@@ -18,9 +18,6 @@ motmetrics==1.4.0
 fastdtw==0.3.4
 ultralytics==8.3.173
 ultralytics-thop==2.0.14
-torch==2.7.0+cu118
-torchvision==0.22.0+cu118
-torchaudio==2.7.0+cu118
 triton==3.3.0
 pyserial==3.5
 psutil==7.0.0
@@ -31,3 +28,4 @@ charset-normalizer==3.4.2
 idna==3.10
 urllib3==2.5.0
 certifi==2025.7.14
+Ipython==8.12.3

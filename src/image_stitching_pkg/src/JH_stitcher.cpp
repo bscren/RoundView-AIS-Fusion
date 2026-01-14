@@ -7,7 +7,7 @@
 #include <vector>
 #include <shared_mutex>
 #include <rclcpp/rclcpp.hpp>
-#include "opencv2/xfeatures2d/nonfree.hpp" // 引入非自由特征检测模块（如SIFT、SURF等）
+// #include "opencv2/xfeatures2d/nonfree.hpp" // 引入非自由特征检测模块（如SIFT、SURF等）
 
 using namespace std;
 using namespace cv;

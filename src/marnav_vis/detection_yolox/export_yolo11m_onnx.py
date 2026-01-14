@@ -5,15 +5,24 @@ import os
 import os.path as osp
 import cv2  # 用于图片读写/显示（可选，也可只用YOLO自带方法）
 import torch  # 新增：导入torch检测CUDA
-
+from ament_index_python.packages import get_package_share_directory
+import os
+# ===================== 基本环境检查 =====================
 print(torch.cuda.is_available())  # 输出True才表示PyTorch支持CUDA
 print(torch.__version__)  # 查看PyTorch版本
 # ===================== 配置项（按需修改） =====================
-model_path = "/home/tl/RV/src/marnav_vis/detection_yolox/model_data/Yolo11m.pt"
-target_onnx_path = "/home/tl/RV/src/marnav_vis/detection_yolox/model_data/Yolo11m.onnx"
+# 获取包共享目录
+package_share_dir = get_package_share_directory('marnav_vis')
+# 模型路径和ONNX输出路径
+model_path = os.path.join(package_share_dir, 'detection_yolox', 'model_data', 'Yolo11m.pt')
+target_onnx_path = os.path.join(package_share_dir, 'detection_yolox', 'model_data', 'Yolo11m.onnx')
+# model_path = "/home/tl/RV/src/marnav_vis/detection_yolox/model_data/Yolo11m.pt"
+# target_onnx_path = "/home/tl/RV/src/marnav_vis/detection_yolox/model_data/Yolo11m.onnx"
 input_size = 640
-inference_img_path = "/home/tl/RV/src/marnav_vis/detection_yolox/test/test.jpg"  # 你的输入图片路径
-output_img_path = "/home/tl/RV/src/marnav_vis/detection_yolox/test/test_with_box.jpg"  # 绘制框后保存的图片路径
+inference_img_path = os.path.join(package_share_dir, 'detection_yolox', 'test', 'test.jpg')
+output_img_path = os.path.join(package_share_dir, 'detection_yolox', 'test', 'test_with_box.jpg')
+# inference_img_path = "/home/tl/RV/src/marnav_vis/detection_yolox/test/test.jpg"  # 你的输入图片路径
+# output_img_path = "/home/tl/RV/src/marnav_vis/detection_yolox/test/test_with_box.jpg"  # 绘制框后保存的图片路径
 # ==============================================================
 
 # 新增：自动检测CUDA是否可用，避免手动设置出错

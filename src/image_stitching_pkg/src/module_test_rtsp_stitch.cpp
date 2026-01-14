@@ -28,8 +28,8 @@
 #include "opencv2/stitching/detail/seam_finders.hpp"
 #include "opencv2/stitching/detail/warpers.hpp"
 #include "opencv2/stitching/warpers.hpp"
-#include "opencv2/xfeatures2d/nonfree.hpp"
-#include <opencv2/xfeatures2d.hpp>  
+// #include "opencv2/xfeatures2d/nonfree.hpp"
+// #include <opencv2/xfeatures2d.hpp>  
 
 
 using namespace cv;

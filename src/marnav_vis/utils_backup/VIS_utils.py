@@ -13,14 +13,22 @@ import cv2
 from PIL import Image
 import pandas as pd
 from IPython import embed
+from ament_index_python.packages import get_package_share_directory
 import os
 simplefilter(action='ignore', category=FutureWarning)
 # 初始化目标检测
 yolo = YOLO()
 
+# 获取包共享目录
+package_share_dir = get_package_share_directory('marnav_vis')
+model_data_dir = os.path.join(package_share_dir, 'deep_sort', 'configs', 'deep_sort.yaml')
 # 初始化跟踪模型
 cfg = get_config()
-cfg.merge_from_file("/home/tl/RV/src/marnav_vis/deep_sort/configs/deep_sort.yaml")
+cfg.merge_from_file(model_data_dir)
+# 给cfg.DEEPSORT.REID_CKPT改为软链接
+if not os.path.isabs(cfg.DEEPSORT.REID_CKPT):
+    package_share_dir = get_package_share_directory('marnav_vis')
+    cfg.DEEPSORT.REID_CKPT = os.path.join(package_share_dir, cfg.DEEPSORT.REID_CKPT)
 deepsort = DeepSort(cfg.DEEPSORT.REID_CKPT,
                     max_dist=cfg.DEEPSORT.MAX_DIST, min_confidence=cfg.DEEPSORT.MIN_CONFIDENCE,
                     nms_max_overlap=cfg.DEEPSORT.NMS_MAX_OVERLAP, max_iou_distance=cfg.DEEPSORT.MAX_IOU_DISTANCE,

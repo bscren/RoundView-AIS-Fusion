@@ -7,6 +7,7 @@ from builtin_interfaces.msg import Time
 import os, time, glob
 from datetime import datetime,timezone,timedelta
 from marnav_vis.config_loader import ConfigLoader
+from ament_index_python.packages import get_package_share_directory
 
 # AIS数据实时接收-发布脚本 2022_06_04_12_07_37
 # 功能: 接收AIS数据并发布，AIS数据从指定文件夹路径读取，文件夹中存在多个AIS数据的csv文件，
@@ -45,6 +46,27 @@ class AisPubNode(Node):
         if not self.ais_csv_folder:
             self.get_logger().fatal("配置文件中未定义ais_csv_folder")
             raise ValueError("未定义AIS CSV文件夹路径")
+        
+        # 如果 ais_csv_folder 不是绝对路径，则转换为绝对路径
+        if not os.path.isabs(self.ais_csv_folder):
+            current_file = os.path.abspath(__file__)
+            # 从当前文件路径向上遍历，找到包含Datasets和src的目录（RV根）
+            workspace_root = None
+            current_dir = os.path.dirname(current_file)
+            # 最多向上遍历10层，避免死循环
+            for _ in range(10):
+                # 检查当前目录是否是RV根（有Datasets和src文件夹）
+                if os.path.exists(os.path.join(current_dir, 'Datasets')) and os.path.exists(os.path.join(current_dir, 'src')):
+                    workspace_root = current_dir
+                    break
+                current_dir = os.path.dirname(current_dir)
+            
+            if not workspace_root:
+                self.get_logger().error("❌ 无法找到RV工作空间根目录！")
+                raise RuntimeError("工作空间根目录定位失败")
+
+            self.ais_csv_folder = os.path.join(workspace_root, self.ais_csv_folder)
+
         
         self.get_logger().info("="*60)
         self.get_logger().info("📡 AIS CSV发布节点配置")

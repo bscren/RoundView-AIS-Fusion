@@ -1,0 +1,10 @@
+{
+  "build": {
+    "cmake": {},
+    "ament_cmake": {},
+    "python": {
+      "setup_requires": ["setuptools"],
+      "install_type": "regular"  # 关键：禁用--editable，用常规安装
+    }
+  }
+}

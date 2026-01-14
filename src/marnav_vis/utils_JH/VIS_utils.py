@@ -13,6 +13,8 @@ from PIL import Image
 import pandas as pd
 from IPython import embed
 import os
+from ament_index_python.packages import get_package_share_directory
+
 simplefilter(action='ignore', category=FutureWarning)
 
 # 为避免主线程中import导致新建多余检测/跟踪模型，注释模块顶层，改为在VISPRO 的init里实现
@@ -202,9 +204,18 @@ class VISPRO(object):
         # 初始化目标检测，在主进程中初始化
         # self.yolo = YOLO(yolo_type=yolo_type)
 
+        # 获取包共享目录
+        package_share_dir = get_package_share_directory('marnav_vis')
+        model_data_dir = os.path.join(package_share_dir, 'deep_sort', 'configs', 'deep_sort.yaml')
+
         # 初始化跟踪模型
         self.cfg = get_config()
-        self.cfg.merge_from_file("/home/tl/RV/src/marnav_vis/deep_sort/configs/deep_sort.yaml")
+        self.cfg.merge_from_file(model_data_dir)
+        # 给cfg.DEEPSORT.REID_CKPT改为软链接
+        if not os.path.isabs(self.cfg.DEEPSORT.REID_CKPT):
+            package_share_dir = get_package_share_directory('marnav_vis')
+            self.cfg.DEEPSORT.REID_CKPT = os.path.join(package_share_dir, self.cfg.DEEPSORT.REID_CKPT)
+        # 初始化
         self.deepsort = DeepSort(self.cfg.DEEPSORT.REID_CKPT,
                             max_dist=self.cfg.DEEPSORT.MAX_DIST, min_confidence=self.cfg.DEEPSORT.MIN_CONFIDENCE,
                             nms_max_overlap=self.cfg.DEEPSORT.NMS_MAX_OVERLAP, max_iou_distance=self.cfg.DEEPSORT.MAX_IOU_DISTANCE,

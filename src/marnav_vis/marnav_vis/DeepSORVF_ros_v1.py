@@ -45,8 +45,8 @@ class AisVisNode(Node):
         self.get_logger().info("\nVesselSORT")
         self.get_logger().info(f"\tdata_path: {self.data_path}")
         self.get_logger().info(f"\tresult_path: {self.result_path}")
-        self.get_logger().info(f"\tvideo_path: {self.video_path}")
-        self.get_logger().info(f"\tais_path: {self.ais_path}")
+        self.get_logger().info(f"\t软链接的 video_path: {self.video_path}")
+        self.get_logger().info(f"\t软链接的 ais_path: {self.ais_path}")
         self.get_logger().info(f"\tanti: {self.anti}")
         self.get_logger().info(f"\tanti_rate: {self.anti_rate}\n")
         

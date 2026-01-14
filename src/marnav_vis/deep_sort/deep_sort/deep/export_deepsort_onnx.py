@@ -9,12 +9,16 @@ import os
 # 添加路径以便导入模型
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, current_dir)
-
+from ament_index_python.packages import get_package_share_directory
 from model import Net  # 导入DeepSORT特征提取模型
 
 # -------------------------- 配置参数 --------------------------
-model_path = "/home/tl/RV/src/marnav_vis/deep_sort/deep_sort/deep/checkpoint/ckpt.t7"  # 模型权重路径
-output_onnx_path = "/home/tl/RV/src/marnav_vis/deep_sort/deep_sort/deep/checkpoint/ckpt.onnx"  # 导出的ONNX路径
+# 获取包共享目录
+package_share_dir = get_package_share_directory('marnav_vis')
+model_path = os.path.join(package_share_dir, 'deep_sort', 'deep_sort','deep', 'checkpoint', 'ckpt.t7')
+output_onnx_path = os.path.join(package_share_dir, 'deep_sort', 'deep_sort','deep', 'checkpoint', 'ckpt.onnx')
+# model_path = "/home/tl/RV/src/marnav_vis/deep_sort/deep_sort/deep/checkpoint/ckpt.t7"  # 模型权重路径
+# output_onnx_path = "/home/tl/RV/src/marnav_vis/deep_sort/deep_sort/deep/checkpoint/ckpt.onnx"  # 导出的ONNX路径
 opset_version = 19  # ONNX算子集版本（建议11+，兼容多数C++部署工具，但是yolov11m导出时采用19）
 input_shape = [128, 64]  # 输入尺寸 [高, 宽]（需与模型训练时一致，对应3x128x64）
 batch_size = 1  # 默认batch_size（用于导出，实际运行时支持动态batch）

@@ -1,5 +1,5 @@
 DEEPSORT:
-  REID_CKPT: "/home/tl/RV/src/marnav_vis/deep_sort/deep_sort/deep/checkpoint/ckpt.t7" #特征提取网络模型
+  REID_CKPT: "deep_sort/deep_sort/deep/checkpoint/ckpt.t7" #"/home/tl/RV/src/marnav_vis/deep_sort/deep_sort/deep/checkpoint/ckpt.t7" #特征提取网络模型
   MAX_DIST: 0.2 #最大余弦距离阈值
   MIN_CONFIDENCE: 0.5 #检测结果置信度阈值
   NMS_MAX_OVERLAP: 0.5 #非极大抑制阈值

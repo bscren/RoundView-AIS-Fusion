@@ -83,7 +83,7 @@ devices:
 
 # ============ 存储配置 ============
 storage:
-  root_path: "/home/tl/RV/dataset"  # 数据集根路径
+  root_path: "/home/tl/RV/record_dataset"  # 数据集根路径
   image_format: "jpg"                # 图像格式（jpg/png）
   image_quality: 95                  # JPG压缩质量（1-100）
   sample_rate: 1                     # 帧采样率（1表示全采集，5表示每5帧采1帧）

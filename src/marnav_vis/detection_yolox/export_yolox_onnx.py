@@ -5,13 +5,20 @@ import torch
 import numpy as np
 from nets.yolo import YoloBody  # 导入模型结构
 from utils.utils import preprocess_input  # 导入预处理函数（如需）
-
+from ament_index_python.packages import get_package_share_directory
+import os
 # -------------------------- 配置参数 --------------------------
-model_path = "/home/tl/RV/src/marnav_vis/detection_yolox/model_data/YOLOX-final.pth"  # 模型权重路径
-classes_path = "/home/tl/RV/src/marnav_vis/detection_yolox/model_data/ship_classes.txt"  # 类别文件
+# 获取包共享目录
+package_share_dir = get_package_share_directory('marnav_vis')
+model_path = os.path.join(package_share_dir, 'detection_yolox', 'model_data', 'YOLOX-final.pth')
+classes_path = os.path.join(package_share_dir, 'detection_yolox', 'model_data', 'ship_classes.txt')
+#
+# model_path = "/home/tl/RV/src/marnav_vis/detection_yolox/model_data/YOLOX-final.pth"  # 模型权重路径
+# classes_path = "/home/tl/RV/src/marnav_vis/detection_yolox/model_data/ship_classes.txt"  # 类别文件
 input_shape = [640, 640]  # 输入尺寸（需与模型训练时一致）
 phi = "n"  # 模型版本（s/m/l/x）
-output_onnx_path = "/home/tl/RV/src/marnav_vis/detection_yolox/model_data/yolox.onnx"  # 导出的ONNX路径
+ouput_onnx_path = os.path.join(package_share_dir, 'detection_yolox', 'model_data', 'yolox.onnx')
+# output_onnx_path = "/home/tl/RV/src/marnav_vis/detection_yolox/model_data/yolox.onnx"  # 导出的ONNX路径
 opset_version = 11  # ONNX算子集版本（建议11+，兼容多数C++部署工具）
 # --------------------------------------------------------------
 

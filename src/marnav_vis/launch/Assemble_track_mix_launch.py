@@ -17,17 +17,20 @@ def generate_launch_description():
     # 声明配置文件路径参数
     declare_track_offline_config_file_arg = DeclareLaunchArgument(
         'track_offline_config_file',
-        default_value='/home/tl/RV/src/marnav_vis/config/track_offline_config.yaml',
+        default_value=os.path.join(pkg_share_marnav_vis, 'config', 'track_offline_config.yaml'),
+        # default_value='/home/tl/RV/src/marnav_vis/config/track_offline_config.yaml',
         description='Path to the YAML configuration file'
     )
     declare_track_realtime_config_file_arg = DeclareLaunchArgument(
         'track_realtime_config_file',
-        default_value='/home/tl/RV/src/marnav_vis/config/track_realtime_config.yaml',
+        default_value=os.path.join(pkg_share_marnav_vis, 'config', 'track_realtime_config.yaml'),
+        # default_value='/home/tl/RV/src/marnav_vis/config/track_realtime_config.yaml',
         description='Path to the YAML configuration file'
     )
     declare_rtsp_config_file_arg = DeclareLaunchArgument(
         'rtsp_config_file',
-        default_value='/home/tl/RV/src/image_stitching_pkg/config/JH_rtsp_config.yaml',
+        default_value=os.path.join(pkg_share_image_stitching, 'config', 'JH_rtsp_config.yaml'),
+        # default_value='/home/tl/RV/src/image_stitching_pkg/config/JH_rtsp_config.yaml',
         description='Path to the RTSP configuration file'
     )
     # 相机发布节点(来自 image_stitching_pkg 包）
