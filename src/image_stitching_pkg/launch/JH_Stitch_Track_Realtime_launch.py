@@ -60,7 +60,7 @@ def generate_launch_description():
     gnss_pub_node = Node(
         package='marnav_ais',
         executable='gnss_parser_pub_node',
-        name='gnss_parser_node',
+        name='gnss_parser_pub_node',
         output='screen',
         parameters=[{
             'config_file': LaunchConfiguration('track_realtime_config_file')
@@ -71,7 +71,7 @@ def generate_launch_description():
     ais_sorted_pub_node = Node(
         package='marnav_ais',
         executable='ais_parser_batch_pub_node',
-        name='ais_batch_parser',
+        name='ais_parser_batch_pub_node',
         output='screen',
         parameters=[{
             'config_file': LaunchConfiguration('track_realtime_config_file')

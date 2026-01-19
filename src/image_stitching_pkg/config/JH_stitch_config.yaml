@@ -16,13 +16,13 @@ parameters:
     # 订阅的相机配置列表（支持动态增减相机数量）
     cameras:
       - camera_name: "camera_0"           # 相机名称（用于映射）
-        topic_name: "/camera_image_topic_0"   # 相机0的话题名 rtsp_image_2 / camera_image_topic_0
+        topic_name: "/rtsp_image_0"   # 相机0的话题名 rtsp_image_2 / camera_image_topic_0
         camera_index: 0                       # 相机索引
       - camera_name: "camera_1"           # 相机名称（用于映射）
-        topic_name: "/camera_image_topic_1"   # 相机1的话题名
+        topic_name: "/rtsp_image_1"   # 相机1的话题名
         camera_index: 1                       # 相机索引
       - camera_name: "camera_2"           # 相机名称（用于映射）
-        topic_name: "/camera_image_topic_2"   # 相机2的话题名 
+        topic_name: "/rtsp_image_2"   # 相机2的话题名 
         camera_index: 2                       # 相机索引
     # 如需添加更多相机，按照上面的格式继续添加即可
     

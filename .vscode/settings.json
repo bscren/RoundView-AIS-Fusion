@@ -154,5 +154,5 @@
         "/opt/ros/humble/local/lib/python3.10/dist-packages"
     ],
     "ros.distro": "humble",
-    "cmake.sourceDirectory": "/home/tl/RV/src/marnav_vis_cpp"
+    "cmake.sourceDirectory": "/home/tl/RV/build/marnav_interfaces/marnav_interfaces__py"
 }

@@ -85,7 +85,6 @@ bool JHStitcher::processFirstGroupImpl(const std::vector<cv::Mat>& images) {
             
 
 // ------------------------------------------------------------------------------------------------------------------------------------------
-
         // 特征点检测
         std::vector<ImageFeatures> features(num_images);
         std::vector<Size> images_sizes(num_images);

@@ -35,8 +35,7 @@ class CameraFrame:
 class SingleCameraReceiver:
     """单个相机接收器"""
     
-    def __init__(self, camera_config: Dict, save_path: Optional[str] = None, 
-                 video_filename: Optional[str] = None):
+    def __init__(self, camera_config: Dict, save_path: Optional[str] = None, video_filename: Optional[str] = None):
         """
         初始化单相机接收器
         

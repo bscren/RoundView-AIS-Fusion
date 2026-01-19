@@ -552,13 +552,13 @@ private:
         auto node_total_duration = std::chrono::duration_cast<std::chrono::milliseconds>(node_total_end - node_total_start).count();
         
         // ========== 性能报告（仅在总耗时>60ms时输出） ==========
-        if (node_total_duration > 60) {
-            RCLCPP_WARN(this->get_logger(), 
-                "⚠️ [节点层性能] 总耗时异常: %ld ms", node_total_duration);
-            RCLCPP_INFO(this->get_logger(), 
-                "  步骤A-获取轨迹锁: %ld ms | 步骤B-拼接处理: %ld ms | 步骤C-获取轨迹框: %ld ms | 步骤D-获取GNSS锁: %ld ms | 步骤E-发布图像: %ld ms",
-                stepA_duration, stepB_duration, stepC_duration, stepD_duration, stepE_duration);
-        }
+        // if (node_total_duration > 60) {
+        //     RCLCPP_WARN(this->get_logger(), 
+        //         "⚠️ [节点层性能] 总耗时异常: %ld ms", node_total_duration);
+        //     RCLCPP_INFO(this->get_logger(), 
+        //         "  步骤A-获取轨迹锁: %ld ms | 步骤B-拼接处理: %ld ms | 步骤C-获取轨迹框: %ld ms | 步骤D-获取GNSS锁: %ld ms | 步骤E-发布图像: %ld ms",
+        //         stepA_duration, stepB_duration, stepC_duration, stepD_duration, stepE_duration);
+        // }
     }
 
     // 定时更新拼缝线
