@@ -137,7 +137,7 @@ def visual_transform(lon_v, lat_v, camera_pos_para, shape, camera_type):
         # 使用鱼眼相机投影公式计算得到目标图像坐标(target_x, target_y)
         K = np.array([[f_x, 0, u0], [0, f_y, v0], [0, 0, 1]])
         D = np.array([camera_pos_para['k1'], camera_pos_para['k2'], camera_pos_para['k3'], camera_pos_para['k4']])
-        object_points = np.array(X,Y,Z).reshape(-1, 1, 3)
+        object_points = np.array([X,Y,Z]).reshape(-1, 1, 3)
         rvec = np.zeros((3, 1), dtype=np.float64)
         tvec = np.zeros((3, 1), dtype=np.float64)
         image_points, _ = cv2.fisheye.projectPoints(object_points, rvec, tvec, K, D)
