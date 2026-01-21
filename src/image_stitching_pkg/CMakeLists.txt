@@ -96,7 +96,7 @@ add_executable(JH_rtsp
 ## 4.封装JH_ROS版本
 add_executable(JH_ROS_stitch
   src/JH_ros2_stitch_node.cpp
-  src/JH_stitcher.cpp
+  src/JH_SeamStitcher.cpp
 )
 
 

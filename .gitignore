@@ -9,3 +9,37 @@ VideonImage/
 Datasets/
 record_dataset/
 src/marnav_vis/Datasets/*
+
+# Ignore generated image files
+*.png
+*.jpg
+*.jpeg
+*.bmp
+*.tiff
+*.gif
+
+# Ignore other temporary files
+*.tmp
+*.temp
+*.bak
+*.swp
+*.log
+*.aux
+*.out
+*.toc
+*.gz
+*.zip
+*.tar
+*.rar
+*.7z
+*.class
+*.obj
+*.exe
+*.dll
+*.obj
+*.so
+*.dylib
+*.lib
+*.obj
+*.pyc
+__pycache__/

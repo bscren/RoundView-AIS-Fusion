@@ -17,13 +17,14 @@
 #include "marnav_interfaces/msg/gnss.hpp"
 
 
-#include "JHstitcher.hpp"
+#include "JH_SeamStitcher.hpp"
 #include <mutex>
 #include <shared_mutex>
 #include <thread>
 #include <atomic>
 #include <nlohmann/json.hpp>
 #include <fstream>
+#include <array>
 
 // YAML解析库
 #include <yaml-cpp/yaml.h>
@@ -60,18 +61,24 @@ struct NodeConfig {
     
     // Stitcher参数
     int refresh_time;
-    int min_keypoints;
+    int min_key_points;
     double min_confidence;
     int min_inliers;
     double max_focal_variance;
     double y_tolerance;
     float roi_threshold;
     double scale;
-    bool cropornot;
-    bool drawboxornot;
-    bool save_CameraParams;
-    std::string save_CameraParams_path;
-    bool use_saved_CameraParams;
+    bool crop_or_not;
+    int crop_top;
+    int crop_bottom;
+    int crop_left;
+    int crop_right;
+    bool draw_box_or_not;
+    bool save_camera_params;
+    std::string remap_dir;
+    std::string cache_file;
+    std::string calib_dir;
+    bool use_saved_camera_params;
     double FOV_hor;
     double FOV_ver;
 };
@@ -199,22 +206,30 @@ bool loadConfigFromYAML(const std::string& config_file_path, NodeConfig& config,
         
         const YAML::Node& stitcher_params = params["Stitcher_parameters"];
         config.refresh_time = stitcher_params["refresh_time"].as<int>();
-        config.min_keypoints = stitcher_params["min_keypoints"].as<int>();
+        config.min_key_points = stitcher_params["min_key_points"].as<int>();
         config.min_confidence = stitcher_params["min_confidence"].as<double>();
         config.min_inliers = stitcher_params["min_inliers"].as<int>();
         config.max_focal_variance = stitcher_params["max_focal_variance"].as<double>();
         config.y_tolerance = stitcher_params["y_tolerance"].as<double>();
         config.roi_threshold = stitcher_params["roi_threshold"].as<float>();
         config.scale = stitcher_params["scale"].as<double>();
-        config.cropornot = stitcher_params["cropornot"].as<bool>();
-        config.drawboxornot = stitcher_params["drawboxornot"].as<bool>();
-        config.save_CameraParams = stitcher_params["save_CameraParams"].as<bool>();
-        string relative_params_path = stitcher_params["save_CameraParams_path"].as<std::string>();
+        config.crop_or_not = stitcher_params["crop_or_not"].as<bool>();
+        config.crop_top = stitcher_params["crop_top"].as<int>();
+        config.crop_bottom = stitcher_params["crop_bottom"].as<int>();
+        config.crop_left = stitcher_params["crop_left"].as<int>();
+        config.crop_right = stitcher_params["crop_right"].as<int>();
+        config.draw_box_or_not = stitcher_params["draw_box_or_not"].as<bool>();
+        config.save_camera_params = stitcher_params["save_camera_params"].as<bool>();
+        string relative_remap_dir = stitcher_params["remap_dir"].as<std::string>();
+        string relative_cache_file = stitcher_params["cache_file"].as<std::string>();
+        string relative_calib_dir = stitcher_params["calib_dir"].as<std::string>();
         // 1. 自动获取工作空间根路径
         string ws_root = getRVWorkspaceRoot(logger);
         // 2. 拼接完整路径
-        config.save_CameraParams_path = resolveFullPath(ws_root, relative_params_path, logger);
-        config.use_saved_CameraParams = stitcher_params["use_saved_CameraParams"].as<bool>();
+        config.remap_dir = resolveFullPath(ws_root, relative_remap_dir, logger);
+        config.cache_file = resolveFullPath(ws_root, relative_cache_file, logger);
+        config.calib_dir = resolveFullPath(ws_root, relative_calib_dir, logger);
+        config.use_saved_camera_params = stitcher_params["use_saved_camera_params"].as<bool>();
         config.FOV_hor = stitcher_params["FOV_hor"].as<double>();
         config.FOV_ver = stitcher_params["FOV_ver"].as<double>();
         
@@ -285,18 +300,24 @@ public:
         stitcher_ = std::make_unique<JHStitcher>(
             cam_name_to_idx_, //相机名称到索引的映射
             config.refresh_time,
-            config.min_keypoints,
+            config.min_key_points,
             config.min_confidence,
             config.min_inliers,
             config.max_focal_variance,
             config.y_tolerance,
             config.roi_threshold,
             config.scale,
-            config.cropornot,
-            config.drawboxornot,
-            config.save_CameraParams,
-            config.save_CameraParams_path,
-            config.use_saved_CameraParams,
+            config.crop_or_not,
+            config.crop_top,
+            config.crop_bottom,
+            config.crop_left,
+            config.crop_right,
+            config.draw_box_or_not,
+            config.save_camera_params,
+            config.remap_dir,
+            config.cache_file,
+            config.calib_dir,
+            config.use_saved_camera_params,
             config.FOV_hor,
             config.FOV_ver
         );
@@ -308,22 +329,47 @@ public:
             .durability(rclcpp::DurabilityPolicy::Volatile);
         
         // 从配置中读取话题名称创建订阅器
-        img1_sub_ = std::make_shared<Subscriber>(this, camera_topic_names[0], image_qos.get_rmw_qos_profile());
-        img2_sub_ = std::make_shared<Subscriber>(this, camera_topic_names[1], image_qos.get_rmw_qos_profile());
-        img3_sub_ = std::make_shared<Subscriber>(this, camera_topic_names[2], image_qos.get_rmw_qos_profile());
+        if (!use_timer_stitch_) {
+            img1_sub_ = std::make_shared<Subscriber>(this, camera_topic_names[0], image_qos.get_rmw_qos_profile());
+            img2_sub_ = std::make_shared<Subscriber>(this, camera_topic_names[1], image_qos.get_rmw_qos_profile());
+            img3_sub_ = std::make_shared<Subscriber>(this, camera_topic_names[2], image_qos.get_rmw_qos_profile());
+        } else {
+            img1_cache_sub_ = this->create_subscription<Image>(
+                camera_topic_names[0], image_qos,
+                [this](const Image::ConstSharedPtr& msg) { cache_image_callback(0, msg); });
+            img2_cache_sub_ = this->create_subscription<Image>(
+                camera_topic_names[1], image_qos,
+                [this](const Image::ConstSharedPtr& msg) { cache_image_callback(1, msg); });
+            img3_cache_sub_ = this->create_subscription<Image>(
+                camera_topic_names[2], image_qos,
+                [this](const Image::ConstSharedPtr& msg) { cache_image_callback(2, msg); });
+        }
         
         RCLCPP_INFO(this->get_logger(), "订阅相机话题: %s, %s, %s", 
                    camera_topic_names[0].c_str(), camera_topic_names[1].c_str(), camera_topic_names[2].c_str());
 
-        // 创建图像接收同步器
-        sync_ = std::make_shared<message_filters::Synchronizer<SyncPolicy>>(
-                SyncPolicy(100000000),  // 最大时间差参数（纳秒）
-                *img1_sub_, *img2_sub_, *img3_sub_);
+        if (!use_timer_stitch_) {
+            // 创建图像接收同步器
+            const int sync_queue_size = 20;
+            const auto sync_slop = rclcpp::Duration::from_seconds(0.08); // 80ms
+            sync_ = std::make_shared<message_filters::Synchronizer<SyncPolicy>>(
+                    SyncPolicy(sync_queue_size),
+                    *img1_sub_, *img2_sub_, *img3_sub_);
+            sync_->setMaxIntervalDuration(sync_slop);
 
-        // 绑定图像接收回调函数
-        sync_->registerCallback(
-            std::bind(&JHRos2StitchNode::image_callback, this,
-                      std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
+            // 绑定图像接收回调函数
+            sync_->registerCallback(
+                std::bind(&JHRos2StitchNode::image_callback, this,
+                          std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
+        } else {
+            const auto timer_period = std::chrono::milliseconds(50); // 16.67Hz定时器 = 60ms周期
+            image_timer_ = this->create_wall_timer(
+                timer_period,
+                std::bind(&JHRos2StitchNode::timer_stitch_callback, this),
+                callback_group_);
+            RCLCPP_INFO(this->get_logger(), "启用定时器驱动拼接模式，周期: %ld ms",
+                        timer_period.count());
+        }
 
         // 创建定时更新拼缝线的定时器（使用配置中的refresh_time）
         stitch_timer_ = this->create_wall_timer(
@@ -385,22 +431,22 @@ public:
         still_detecting = false;
 
         // 检查是否使用已保存的相机参数（使用配置中的参数）
-        bool use_saved_params = config.use_saved_CameraParams;
-        std::string params_path = config.save_CameraParams_path;
+        bool use_saved_params = config.use_saved_camera_params;
+        std::string params_path = config.cache_file;
         
         if (use_saved_params) {
             RCLCPP_INFO(this->get_logger(), "========================================");
-            RCLCPP_INFO(this->get_logger(), "📁 use_saved_CameraParams=true");
+            RCLCPP_INFO(this->get_logger(), "📁 use_saved_camera_params=true");
             RCLCPP_INFO(this->get_logger(), "✅ 将加载已保存的相机参数，跳过耗时的特征检测和匹配步骤");
             RCLCPP_INFO(this->get_logger(), "📂 参数文件路径: %s", params_path.c_str());
             RCLCPP_INFO(this->get_logger(), "⏱️  首次处理时间将大幅缩短（约节省80%%时间）");
             RCLCPP_INFO(this->get_logger(), "========================================");
         } else {
             RCLCPP_INFO(this->get_logger(), "========================================");
-            RCLCPP_INFO(this->get_logger(), "📁 use_saved_CameraParams=false");
+            RCLCPP_INFO(this->get_logger(), "📁 use_saved_camera_params=false");
             RCLCPP_INFO(this->get_logger(), "🔍 将进行完整的首次处理：特征检测 → 特征匹配 → 相机参数估计");
             RCLCPP_INFO(this->get_logger(), "⏱️  首次处理可能需要较长时间（取决于图像分辨率）");
-            RCLCPP_INFO(this->get_logger(), "💾 如需保存参数以加速后续启动，请设置 save_CameraParams=true");
+            RCLCPP_INFO(this->get_logger(), "💾 如需保存参数以加速后续启动，请设置 save_camera_params=true");
             RCLCPP_INFO(this->get_logger(), "========================================");
         }
         
@@ -421,6 +467,10 @@ private:
     rclcpp::CallbackGroup::SharedPtr callback_group_;
     std::shared_ptr<Subscriber> img1_sub_, img2_sub_, img3_sub_;
     std::shared_ptr<message_filters::Synchronizer<SyncPolicy>> sync_;
+    rclcpp::Subscription<Image>::SharedPtr img1_cache_sub_;
+    rclcpp::Subscription<Image>::SharedPtr img2_cache_sub_;
+    rclcpp::Subscription<Image>::SharedPtr img3_cache_sub_;
+    rclcpp::TimerBase::SharedPtr image_timer_;
     rclcpp::Subscription<VisiableTraBatchMsg>::SharedPtr visiable_tra_sub_;
     rclcpp::Publisher<JHjpgMsg>::SharedPtr stitched_pub_;
     rclcpp::TimerBase::SharedPtr stitch_timer_;
@@ -432,6 +482,11 @@ private:
     std::atomic<bool> is_first_group_processed_;
     std::atomic<bool> has_received_images_;
     std::atomic<bool> still_detecting;
+    std::array<cv::Mat, 3> latest_images_;
+    std::array<rclcpp::Time, 3> latest_stamps_;
+    std::array<bool, 3> latest_ready_{{false, false, false}};
+    std::mutex latest_images_mutex_;
+    const bool use_timer_stitch_ = true;
 
     std::thread stitch_thread; // 拼縫檢測的类成员变量，而非局部变量
 
@@ -488,6 +543,57 @@ private:
             }
         } else {
             // 后续处理（主要耗时）
+            processSubsequentGroup(images);
+        }
+    }
+
+    void cache_image_callback(size_t idx, const Image::ConstSharedPtr& msg) {
+        try {
+            cv::Mat frame = cv_bridge::toCvShare(msg, "bgr8")->image.clone();
+            std::lock_guard<std::mutex> lock(latest_images_mutex_);
+            latest_images_[idx] = std::move(frame);
+            latest_stamps_[idx] = rclcpp::Time(msg->header.stamp);
+            latest_ready_[idx] = true;
+        } catch (const cv_bridge::Exception& e) {
+            RCLCPP_ERROR(this->get_logger(), "cv_bridge转换错误: %s", e.what());
+        }
+    }
+
+    void timer_stitch_callback() {
+        std::array<cv::Mat, 3> local_images;
+        std::array<rclcpp::Time, 3> local_stamps;
+        {
+            std::lock_guard<std::mutex> lock(latest_images_mutex_);
+            if (!latest_ready_[0] || !latest_ready_[1] || !latest_ready_[2]) {
+                return;
+            }
+            local_images = latest_images_;
+            local_stamps = latest_stamps_;
+        }
+
+        const double diff_ms = (std::max({local_stamps[0], local_stamps[1], local_stamps[2]}) -
+                                std::min({local_stamps[0], local_stamps[1], local_stamps[2]})).seconds() * 1000.0;
+        RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 1000,
+                             "三路图像时间戳差: %.2f ms", diff_ms);
+
+        std::vector<cv::Mat> images;
+        images.reserve(3);
+        for (const auto& img : local_images) {
+            if (img.empty()) {
+                return;
+            }
+            images.push_back(img);
+        }
+
+        if (!is_first_group_processed_) {
+            if (processFirstGroup(images)) {
+                is_first_group_processed_ = true;
+                RCLCPP_INFO(this->get_logger(), "首次处理组成功: %s", thread_info().c_str());
+            } else {
+                RCLCPP_ERROR(this->get_logger(), "首次处理组失败: %s", thread_info().c_str());
+                is_first_group_processed_ = false;
+            }
+        } else {
             processSubsequentGroup(images);
         }
     }
@@ -551,14 +657,22 @@ private:
         auto node_total_end = std::chrono::high_resolution_clock::now();
         auto node_total_duration = std::chrono::duration_cast<std::chrono::milliseconds>(node_total_end - node_total_start).count();
         
-        // ========== 性能报告（仅在总耗时>60ms时输出） ==========
-        // if (node_total_duration > 60) {
-        //     RCLCPP_WARN(this->get_logger(), 
-        //         "⚠️ [节点层性能] 总耗时异常: %ld ms", node_total_duration);
-        //     RCLCPP_INFO(this->get_logger(), 
-        //         "  步骤A-获取轨迹锁: %ld ms | 步骤B-拼接处理: %ld ms | 步骤C-获取轨迹框: %ld ms | 步骤D-获取GNSS锁: %ld ms | 步骤E-发布图像: %ld ms",
-        //         stepA_duration, stepB_duration, stepC_duration, stepD_duration, stepE_duration);
-        // }
+        // ========== 性能报告（仅在总耗时>5ms时输出） ==========
+        if (node_total_duration > 5) {
+            // RCLCPP_INFO(this->get_logger(), "⚠️ [节点层性能] 总耗时: %ld ms", node_total_duration);
+            // RCLCPP_INFO(this->get_logger(), 
+            //     "  步骤A-获取轨迹锁: %ld ms | 步骤B-拼接处理: %ld ms | 步骤C-获取轨迹框: %ld ms | 步骤D-获取GNSS锁: %ld ms | 步骤E-发布图像: %ld ms",
+            //     stepA_duration, stepB_duration, stepC_duration, stepD_duration, stepE_duration);
+            // 计算每次处理的间隔时间
+            static int64_t last_process_time = 0;
+            int64_t current_time = std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+            if (last_process_time != 0) {
+                int64_t interval = current_time - last_process_time;
+                // RCLCPP_INFO(this->get_logger(), "  距上次处理间隔: %ld ms", interval);
+            }
+            last_process_time = current_time;
+        }
     }
 
     // 定时更新拼缝线
@@ -728,14 +842,6 @@ private:
             jh_msg.size = jh_msg.picture.size();
             jpeg_size = jh_msg.picture.size();
         }
-        
-        // 如果JPEG编码超过50ms，输出详细信息
-        if (pub_step4_duration > 50) {
-            RCLCPP_WARN(this->get_logger(), 
-                "⚠️ JPEG编码耗时异常: %ldms (图像尺寸:%dx%d, 像素数:%zu, 压缩后大小:%zu bytes, 压缩率:%.2f%%)",
-                pub_step4_duration, stitched_8u.cols, stitched_8u.rows, 
-                image_pixels, jpeg_size, (double)jpeg_size / (image_pixels * 3) * 100);
-        }
 
         // ========== 发布步骤5：ROS2发布 ==========
         auto pub_step5_start = std::chrono::high_resolution_clock::now();
@@ -748,42 +854,20 @@ private:
         auto pub_step5_end = std::chrono::high_resolution_clock::now();
         auto pub_step5_duration = std::chrono::duration_cast<std::chrono::milliseconds>(pub_step5_end - pub_step5_start).count();
         
-        // 记录发布统计信息
-        static int64_t pub_count = 0;
-        static int64_t pub_sum = 0;
-        static int64_t pub_max = 0;
-        pub_count++;
-        pub_sum += pub_step5_duration;
-        if (pub_step5_duration > pub_max) pub_max = pub_step5_duration;
-        
-        // 如果ROS发布超过15ms，输出详细信息（BestEffort模式下应该<10ms）
-        if (pub_step5_duration > 15) {
-            RCLCPP_WARN(this->get_logger(), 
-                "⚠️ ROS2发布耗时异常: %ldms (消息大小:%zu bytes) [平均:%.1fms, 最大:%ldms, 样本数:%ld]",
-                pub_step5_duration, total_msg_size, 
-                (double)pub_sum / pub_count, pub_max, pub_count);
-        }
-        
-        // 每100帧输出一次统计信息
-        if (pub_count % 100 == 0) {
-            RCLCPP_INFO(this->get_logger(), 
-                "📊 ROS2发布统计 (最近100帧): 平均%.1fms, 最大%ldms, 消息大小~%zuKB",
-                (double)pub_sum / pub_count, pub_max, total_msg_size / 1024);
-        }
 
         // ========== 发布总耗时 ==========
         auto pub_total_end = std::chrono::high_resolution_clock::now();
         auto pub_total_duration = std::chrono::duration_cast<std::chrono::milliseconds>(pub_total_end - pub_total_start).count();
         
         // 总是输出详细的发布性能信息（因为这是主要瓶颈）
-        if (pub_total_duration > 10) {
-            RCLCPP_WARN(this->get_logger(), 
-                "📤 [发布性能详细] 总耗时: %ldms", pub_total_duration);
-            RCLCPP_INFO(this->get_logger(),
-                "  发布步骤1-图像转换: %ldms | 步骤2-构建头: %ldms | 步骤3-JSON: %ldms | 步骤4-JPEG编码: %ldms | 步骤5-ROS发布: %ldms",
-                pub_step1_duration, pub_step2_duration, pub_step3_duration, 
-                pub_step4_duration, pub_step5_duration);
-        }
+        // if (pub_total_duration > 1) {
+        //     RCLCPP_INFO(this->get_logger(), 
+        //         "📤 [发布性能详细] 总耗时: %ldms", pub_total_duration);
+        //     RCLCPP_INFO(this->get_logger(),
+        //         "  发布步骤1-图像转换: %ldms | 步骤2-构建头: %ldms | 步骤3-JSON: %ldms | 步骤4-JPEG编码: %ldms | 步骤5-ROS发布: %ldms",
+        //         pub_step1_duration, pub_step2_duration, pub_step3_duration, 
+        //         pub_step4_duration, pub_step5_duration);
+        // }
     }
 
     // 将轨迹框信息 和 此刻的GNSS消息 转换为JSON格式
