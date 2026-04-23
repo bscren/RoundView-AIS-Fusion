@@ -5,6 +5,7 @@ log/
 methodsCompare/
 result/
 ROS2BAG/
+ROS_Bag/
 VideonImage/
 Datasets/
 record_dataset/

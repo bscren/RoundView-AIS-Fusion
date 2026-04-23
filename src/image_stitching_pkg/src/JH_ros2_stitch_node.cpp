@@ -74,6 +74,9 @@ struct NodeConfig {
     int crop_left;
     int crop_right;
     bool draw_box_or_not;
+    bool trajectory_dedup_enable;
+    double trajectory_dedup_iou_threshold_no_mmsi;
+    std::string trajectory_dedup_keep_policy;
     bool save_camera_params;
     std::string remap_dir;
     std::string cache_file;
@@ -219,6 +222,22 @@ bool loadConfigFromYAML(const std::string& config_file_path, NodeConfig& config,
         config.crop_left = stitcher_params["crop_left"].as<int>();
         config.crop_right = stitcher_params["crop_right"].as<int>();
         config.draw_box_or_not = stitcher_params["draw_box_or_not"].as<bool>();
+        config.trajectory_dedup_enable = stitcher_params["trajectory_dedup_enable"]
+            ? stitcher_params["trajectory_dedup_enable"].as<bool>()
+            : true;
+        config.trajectory_dedup_iou_threshold_no_mmsi = stitcher_params["trajectory_dedup_iou_threshold_no_mmsi"]
+            ? stitcher_params["trajectory_dedup_iou_threshold_no_mmsi"].as<double>()
+            : 0.70;
+        config.trajectory_dedup_keep_policy = stitcher_params["trajectory_dedup_keep_policy"]
+            ? stitcher_params["trajectory_dedup_keep_policy"].as<std::string>()
+            : "center";
+        if (config.trajectory_dedup_iou_threshold_no_mmsi < 0.0 || config.trajectory_dedup_iou_threshold_no_mmsi > 1.0) {
+            RCLCPP_WARN(logger, "trajectory_dedup_iou_threshold_no_mmsi 超出[0,1]范围，回退默认值0.70");
+            config.trajectory_dedup_iou_threshold_no_mmsi = 0.70;
+        }
+        if (config.trajectory_dedup_keep_policy.empty()) {
+            config.trajectory_dedup_keep_policy = "center";
+        }
         config.save_camera_params = stitcher_params["save_camera_params"].as<bool>();
         string relative_remap_dir = stitcher_params["remap_dir"].as<std::string>();
         string relative_cache_file = stitcher_params["cache_file"].as<std::string>();
@@ -313,6 +332,9 @@ public:
             config.crop_left,
             config.crop_right,
             config.draw_box_or_not,
+            config.trajectory_dedup_enable,
+            config.trajectory_dedup_iou_threshold_no_mmsi,
+            config.trajectory_dedup_keep_policy,
             config.save_camera_params,
             config.remap_dir,
             config.cache_file,
@@ -438,8 +460,9 @@ public:
             RCLCPP_INFO(this->get_logger(), "========================================");
             RCLCPP_INFO(this->get_logger(), "📁 use_saved_camera_params=true");
             RCLCPP_INFO(this->get_logger(), "✅ 将加载已保存的相机参数，跳过耗时的特征检测和匹配步骤");
+            RCLCPP_INFO(this->get_logger(), "ℹ️  仍需等待三路首帧图像以完成首次处理初始化，但不会重新做特征匹配");
             RCLCPP_INFO(this->get_logger(), "📂 参数文件路径: %s", params_path.c_str());
-            RCLCPP_INFO(this->get_logger(), "⏱️  首次处理时间将大幅缩短（约节省80%%时间）");
+            RCLCPP_INFO(this->get_logger(), "⏱️  首次处理时间将大幅缩短（约节省80%%时间），但不会完全跳过首次处理");
             RCLCPP_INFO(this->get_logger(), "========================================");
         } else {
             RCLCPP_INFO(this->get_logger(), "========================================");
@@ -551,9 +574,14 @@ private:
         try {
             cv::Mat frame = cv_bridge::toCvShare(msg, "bgr8")->image.clone();
             std::lock_guard<std::mutex> lock(latest_images_mutex_);
+            const bool is_first_frame = !latest_ready_[idx];
             latest_images_[idx] = std::move(frame);
             latest_stamps_[idx] = rclcpp::Time(msg->header.stamp);
             latest_ready_[idx] = true;
+            if (is_first_frame) {
+                RCLCPP_INFO(this->get_logger(), "收到相机%zu首帧图像: %dx%d", idx,
+                            latest_images_[idx].cols, latest_images_[idx].rows);
+            }
         } catch (const cv_bridge::Exception& e) {
             RCLCPP_ERROR(this->get_logger(), "cv_bridge转换错误: %s", e.what());
         }
@@ -565,6 +593,14 @@ private:
         {
             std::lock_guard<std::mutex> lock(latest_images_mutex_);
             if (!latest_ready_[0] || !latest_ready_[1] || !latest_ready_[2]) {
+                RCLCPP_WARN_THROTTLE(
+                    this->get_logger(),
+                    *this->get_clock(),
+                    5000,
+                    "等待三路图像就绪，当前状态: [%d, %d, %d]",
+                    latest_ready_[0],
+                    latest_ready_[1],
+                    latest_ready_[2]);
                 return;
             }
             local_images = latest_images_;

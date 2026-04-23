@@ -4,6 +4,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -33,6 +34,9 @@ JHStitcher::JHStitcher(
     int crop_left,
     int crop_right,
     bool draw_box_or_not,
+    bool trajectory_dedup_enable,
+    double trajectory_dedup_iou_threshold_no_mmsi,
+    std::string trajectory_dedup_keep_policy,
     bool save_camera_params,
     string remap_dir,
     string cache_file,
@@ -56,6 +60,9 @@ JHStitcher::JHStitcher(
     crop_left_(crop_left),
     crop_right_(crop_right),
     draw_box_or_not_(draw_box_or_not),
+    trajectory_dedup_enable_(trajectory_dedup_enable),
+    trajectory_dedup_iou_threshold_no_mmsi_(trajectory_dedup_iou_threshold_no_mmsi),
+    trajectory_dedup_keep_policy_(trajectory_dedup_keep_policy),
     save_camera_params_(save_camera_params),
     remap_dir_(remap_dir),
     cache_file_(cache_file),
@@ -66,6 +73,23 @@ JHStitcher::JHStitcher(
 
     {
     latest_warp_images_32F.resize(3);
+    if (trajectory_dedup_iou_threshold_no_mmsi_ < 0.0) {
+        trajectory_dedup_iou_threshold_no_mmsi_ = 0.0;
+    } else if (trajectory_dedup_iou_threshold_no_mmsi_ > 1.0) {
+        trajectory_dedup_iou_threshold_no_mmsi_ = 1.0;
+    }
+
+    std::string keep_policy_lower = trajectory_dedup_keep_policy_;
+    std::transform(keep_policy_lower.begin(), keep_policy_lower.end(), keep_policy_lower.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    if (keep_policy_lower.empty()) {
+        keep_policy_lower = "center";
+    }
+    if (keep_policy_lower != "center") {
+        keep_policy_lower = "center";
+    }
+    trajectory_dedup_keep_policy_ = keep_policy_lower;
+
     if (save_camera_params_file_.empty() || remap_dir_.empty() || cache_file_.empty() || calib_dir_.empty()) {
         std::string share_dir = ament_index_cpp::get_package_share_directory("image_stitching_pkg");
         if (calib_dir_.empty()) {
@@ -102,7 +126,9 @@ bool JHStitcher::processFirstGroupImpl(std::vector<cv::Mat>& images) {
     if (use_saved_camera_params_) { // 使用已保存的相机参数
         cout<<"使用已保存的相机参数" << endl;
         TransformationData cached;
-        if (loadStitchCache(cache_file_, cached) && loadRemapMaps(remap_dir_, num_images, cached)) {
+        const bool cache_loaded = loadStitchCache(cache_file_, cached);
+        const bool remap_loaded = cache_loaded && loadRemapMaps(remap_dir_, num_images, cached);
+        if (cache_loaded && remap_loaded) {
             bool size_ok = (static_cast<int>(cached.cameras.size()) == num_images);
             for (int i = 0; i < num_images && size_ok; ++i) {
                 if (cached.mapIU_x[i].size() != images[i].size() ||
@@ -129,7 +155,16 @@ bool JHStitcher::processFirstGroupImpl(std::vector<cv::Mat>& images) {
                 transformation_data_ = cached;
                 return true;
             }
+            cerr << "已保存的remap尺寸与当前输入图像尺寸不一致，拒绝使用缓存。" << endl;
+            for (int i = 0; i < num_images; ++i) {
+                cerr << "  camera[" << i << "] 当前图像尺寸=" << images[i].cols << "x" << images[i].rows
+                     << ", 缓存mapIU尺寸=" << cached.mapIU_x[i].cols << "x" << cached.mapIU_x[i].rows << endl;
+            }
+        } else {
+            cerr << "加载已保存的拼接缓存失败。cache_file=" << cache_file_
+                 << ", remap_dir=" << remap_dir_ << endl;
         }
+        return false;
     }
     else{ // 不使用已保存的相机参数，按照当前图像重新计算相机参数
         cout<<"不使用已保存的相机参数" << endl;
@@ -665,8 +700,9 @@ void JHStitcher::CalibTrajInPano(
     const std::vector<std::queue<VisiableTra>>& latest_visiable_tra_cache_    
 )
 {
-    // 0. 清空之前的轨迹框（避免累积旧数据）
     trajectory_boxes_.clear();
+    std::vector<TrajectoryBoxInfo> candidate_boxes;
+
     // 1. 计算全局ROI（与filtBoxes中相同的逻辑）
     Rect dst_roi = Rect(data.corners[0], data.sizes[0]);
     for (size_t i = 1; i < data.corners.size(); ++i) {
@@ -674,9 +710,11 @@ void JHStitcher::CalibTrajInPano(
     }
 
     // 2. 遍历每个相机的可见轨迹队列
-    for (const auto& [cam_name, cam_idx] : cam_name_to_idx_) {
+    for (const auto& cam_entry : cam_name_to_idx_) {
+        const int cam_idx = cam_entry.second;
+
         // 检查索引是否有效
-        if (cam_idx >= latest_visiable_tra_cache_.size()) {
+        if (cam_idx < 0 || static_cast<size_t>(cam_idx) >= latest_visiable_tra_cache_.size()) {
             cout << "警告: 相机索引 " << cam_idx << " 超出范围" << endl;
             continue;
         }
@@ -773,88 +811,266 @@ void JHStitcher::CalibTrajInPano(
             traj_box.lat = visiable_tra.latitude; // 船只纬度
             traj_box.lon = visiable_tra.longitude; // 船只经度
 
-            trajectory_boxes_.push_back(traj_box);
+            candidate_boxes.push_back(traj_box);
+        }
+    }
 
-            // 9. 如果启用绘制，在拼接图上画框（可选）
-            if (draw_box_or_not_) {
-                // 根据是否包含AIS信息选择颜色
-                cv::Scalar color = visiable_tra.ais_or_not ? cv::Scalar(0, 255, 0) : cv::Scalar(255, 0, 0);  // AIS绿色，纯视觉蓝色
-                cv::rectangle(pano, top_left, bottom_right, color, 2);
-                
-                // 文本绘制配置
-                double font_scale = 0.5;
-                int font_thickness = 2;
-                int font_face = cv::FONT_HERSHEY_SIMPLEX;
-                int baseline = 0;
-                
-                // 计算文本高度（用于行间距）
-                cv::Size text_size = cv::getTextSize("Test", font_face, font_scale, font_thickness, &baseline);
-                int line_height = text_size.height + baseline + 3;  // 文本高度 + 基线 + 间距
-                
-                // 从检测框左下角开始，依次往下绘制信息
-                int text_x = top_left.x;
-                int text_y = bottom_right.y + line_height;  // 从左下角开始，往下偏移一行
-                
-                // 绘制船只类型信息（如果有效）
-                if (!visiable_tra.ship_type.empty()) {
-                    std::string label = "Ship Type:" + visiable_tra.ship_type;
-                    cv::putText(pano, label, cv::Point(text_x, text_y),
-                               font_face, font_scale, color, font_thickness);
-                    text_y += line_height;  // 下一行
-                }
-                
-                // 绘制MMSI信息（如果有效）
-                if (visiable_tra.mmsi > 0) {
-                    std::string label = "MMSI:" + std::to_string(visiable_tra.mmsi);
-                    cv::putText(pano, label, cv::Point(text_x, text_y),
-                               font_face, font_scale, color, font_thickness);
-                    text_y += line_height;  // 下一行
-                }
-                
-                // 绘制SOG信息（如果有效）
-                if (visiable_tra.sog > 0) {
-                    // 保留2位小数
-                    char buffer[32];
-                    snprintf(buffer, sizeof(buffer), "SOG:%.2f", visiable_tra.sog);
-                    cv::putText(pano, buffer, cv::Point(text_x, text_y),
-                               font_face, font_scale, color, font_thickness);
-                    text_y += line_height;  // 下一行
-                }
-                
-                // 绘制COG信息（如果有效）
-                if (visiable_tra.cog > 0) {
-                    // 保留2位小数
-                    char buffer[32];
-                    snprintf(buffer, sizeof(buffer), "COG:%.2f", visiable_tra.cog);
-                    cv::putText(pano, buffer, cv::Point(text_x, text_y),
-                               font_face, font_scale, color, font_thickness);
-                    text_y += line_height;  // 下一行
-                }
-                
-                // 绘制LAT信息（如果有效）
-                if (visiable_tra.latitude != 0) {  // 纬度可以为负，所以用 != 0
-                    // 保留6位小数（GPS精度）
-                    char buffer[32];
-                    snprintf(buffer, sizeof(buffer), "LAT:%.6f", visiable_tra.latitude);
-                    cv::putText(pano, buffer, cv::Point(text_x, text_y),
-                               font_face, font_scale, color, font_thickness);
-                    text_y += line_height;  // 下一行
-                }
-                
-                // 绘制LON信息（如果有效）
-                if (visiable_tra.longitude != 0) {  // 经度可以为负，所以用 != 0
-                    // 保留6位小数（GPS精度）
-                    char buffer[32];
-                    snprintf(buffer, sizeof(buffer), "LON:%.6f", visiable_tra.longitude);
-                    cv::putText(pano, buffer, cv::Point(text_x, text_y),
-                               font_face, font_scale, color, font_thickness);
-                    // text_y += line_height;  // 如果后续还有信息，继续递增
-                }
+    if (trajectory_dedup_enable_) {
+        trajectory_boxes_ = deduplicateTrajectoryBoxes(candidate_boxes, pano.size());
+    } else {
+        trajectory_boxes_ = candidate_boxes;
+    }
+
+    if (draw_box_or_not_) {
+        drawTrajectoryBoxes(pano, trajectory_boxes_);
+    }
+}
+
+cv::Rect JHStitcher::toRect(const TrajectoryBoxInfo& box) const
+{
+    int x1 = std::min(box.top_left.x, box.bottom_right.x);
+    int y1 = std::min(box.top_left.y, box.bottom_right.y);
+    int x2 = std::max(box.top_left.x, box.bottom_right.x);
+    int y2 = std::max(box.top_left.y, box.bottom_right.y);
+    int width = std::max(1, x2 - x1);
+    int height = std::max(1, y2 - y1);
+    return cv::Rect(x1, y1, width, height);
+}
+
+float JHStitcher::calculateIoU(const cv::Rect& a, const cv::Rect& b) const
+{
+    cv::Rect intersection = a & b;
+    if (intersection.width <= 0 || intersection.height <= 0) {
+        return 0.0f;
+    }
+
+    const float inter_area = static_cast<float>(intersection.area());
+    const float union_area = static_cast<float>(a.area() + b.area() - intersection.area());
+    if (union_area <= 0.0f) {
+        return 0.0f;
+    }
+    return inter_area / union_area;
+}
+
+bool JHStitcher::isDuplicateCandidate(const TrajectoryBoxInfo& lhs, const TrajectoryBoxInfo& rhs) const
+{
+    const bool lhs_has_mmsi = lhs.mmsi > 0;
+    const bool rhs_has_mmsi = rhs.mmsi > 0;
+
+    if (lhs_has_mmsi && rhs_has_mmsi) {
+        return lhs.mmsi == rhs.mmsi;
+    }
+
+    const float iou = calculateIoU(toRect(lhs), toRect(rhs));
+    return iou >= static_cast<float>(trajectory_dedup_iou_threshold_no_mmsi_);
+}
+
+double JHStitcher::edgeDistanceScore(const TrajectoryBoxInfo& box, int width, int height) const
+{
+    if (width <= 0 || height <= 0) {
+        return -1.0;
+    }
+
+    const int max_x = width - 1;
+    const int max_y = height - 1;
+
+    int x1 = std::clamp(box.top_left.x, 0, max_x);
+    int y1 = std::clamp(box.top_left.y, 0, max_y);
+    int x2 = std::clamp(box.bottom_right.x, 0, max_x);
+    int y2 = std::clamp(box.bottom_right.y, 0, max_y);
+
+    if (x2 < x1) {
+        std::swap(x1, x2);
+    }
+    if (y2 < y1) {
+        std::swap(y1, y2);
+    }
+
+    const int left = x1;
+    const int top = y1;
+    const int right = max_x - x2;
+    const int bottom = max_y - y2;
+
+    return static_cast<double>(std::min(std::min(left, right), std::min(top, bottom)));
+}
+
+int JHStitcher::boxArea(const TrajectoryBoxInfo& box) const
+{
+    const cv::Rect rect = toRect(box);
+    return rect.area();
+}
+
+size_t JHStitcher::selectPreferredBoxIndex(const std::vector<TrajectoryBoxInfo>& boxes,
+                                           const std::vector<int>& component,
+                                           int width,
+                                           int height) const
+{
+    int best_idx = component.front();
+    double best_edge_score = edgeDistanceScore(boxes[best_idx], width, height);
+    int best_area = boxArea(boxes[best_idx]);
+    bool best_has_mmsi = boxes[best_idx].mmsi > 0;
+
+    for (int idx : component) {
+        const double edge_score = edgeDistanceScore(boxes[idx], width, height);
+        const int area = boxArea(boxes[idx]);
+        const bool has_mmsi = boxes[idx].mmsi > 0;
+
+        if (edge_score > best_edge_score) {
+            best_idx = idx;
+            best_edge_score = edge_score;
+            best_area = area;
+            best_has_mmsi = has_mmsi;
+            continue;
+        }
+
+        if (edge_score == best_edge_score && area > best_area) {
+            best_idx = idx;
+            best_area = area;
+            best_has_mmsi = has_mmsi;
+            continue;
+        }
+
+        if (edge_score == best_edge_score && area == best_area && has_mmsi && !best_has_mmsi) {
+            best_idx = idx;
+            best_has_mmsi = true;
+            continue;
+        }
+
+        if (edge_score == best_edge_score && area == best_area && has_mmsi == best_has_mmsi && idx < best_idx) {
+            best_idx = idx;
+        }
+    }
+
+    return static_cast<size_t>(best_idx);
+}
+
+std::vector<TrajectoryBoxInfo> JHStitcher::deduplicateTrajectoryBoxes(
+    const std::vector<TrajectoryBoxInfo>& boxes,
+    const cv::Size& pano_size
+) const
+{
+    if (boxes.size() <= 1) {
+        return boxes;
+    }
+
+    const int n = static_cast<int>(boxes.size());
+    std::vector<std::vector<int>> graph(n);
+    for (int i = 0; i < n; ++i) {
+        for (int j = i + 1; j < n; ++j) {
+            if (isDuplicateCandidate(boxes[i], boxes[j])) {
+                graph[i].push_back(j);
+                graph[j].push_back(i);
             }
         }
     }
 
-    // cout << "CalibTrajInPano 完成，共处理 " << trajectory_boxes_.size() << " 个轨迹框" << endl;
+    std::vector<TrajectoryBoxInfo> deduped;
+    deduped.reserve(boxes.size());
+    std::vector<bool> visited(n, false);
+
+    for (int i = 0; i < n; ++i) {
+        if (visited[i]) {
+            continue;
+        }
+
+        std::vector<int> component;
+        std::queue<int> q;
+        q.push(i);
+        visited[i] = true;
+
+        while (!q.empty()) {
+            int cur = q.front();
+            q.pop();
+            component.push_back(cur);
+
+            for (int nxt : graph[cur]) {
+                if (!visited[nxt]) {
+                    visited[nxt] = true;
+                    q.push(nxt);
+                }
+            }
+        }
+
+        if (component.size() == 1) {
+            deduped.push_back(boxes[component.front()]);
+            continue;
+        }
+
+        const size_t best_idx = selectPreferredBoxIndex(
+            boxes, component, pano_size.width, pano_size.height);
+        deduped.push_back(boxes[best_idx]);
+    }
+
+    return deduped;
+}
+
+void JHStitcher::drawTrajectoryBoxes(cv::Mat& pano, const std::vector<TrajectoryBoxInfo>& boxes) const
+{
+    if (pano.empty()) {
+        return;
+    }
+
+    const double font_scale = 0.5;
+    const int font_thickness = 2;
+    const int font_face = cv::FONT_HERSHEY_SIMPLEX;
+    int baseline = 0;
+    const cv::Size text_size = cv::getTextSize("Test", font_face, font_scale, font_thickness, &baseline);
+    const int line_height = text_size.height + baseline + 3;
+
+    for (const auto& box : boxes) {
+        const cv::Scalar color = (box.message_type == "AIS")
+                                     ? cv::Scalar(0, 255, 0)
+                                     : cv::Scalar(255, 0, 0);
+        cv::rectangle(pano, box.top_left, box.bottom_right, color, 2);
+
+        int text_x = box.top_left.x;
+        int text_y = box.bottom_right.y + line_height;
+
+        if (!box.ship_type.empty()) {
+            std::string label = "Ship Type:" + box.ship_type;
+            cv::putText(pano, label, cv::Point(text_x, text_y),
+                        font_face, font_scale, color, font_thickness);
+            text_y += line_height;
+        }
+
+        if (box.mmsi > 0) {
+            std::string label = "MMSI:" + std::to_string(box.mmsi);
+            cv::putText(pano, label, cv::Point(text_x, text_y),
+                        font_face, font_scale, color, font_thickness);
+            text_y += line_height;
+        }
+
+        if (box.sog > 0) {
+            char buffer[32];
+            snprintf(buffer, sizeof(buffer), "SOG:%.2f", box.sog);
+            cv::putText(pano, buffer, cv::Point(text_x, text_y),
+                        font_face, font_scale, color, font_thickness);
+            text_y += line_height;
+        }
+
+        if (box.cog > 0) {
+            char buffer[32];
+            snprintf(buffer, sizeof(buffer), "COG:%.2f", box.cog);
+            cv::putText(pano, buffer, cv::Point(text_x, text_y),
+                        font_face, font_scale, color, font_thickness);
+            text_y += line_height;
+        }
+
+        if (box.lat != 0) {
+            char buffer[32];
+            snprintf(buffer, sizeof(buffer), "LAT:%.6f", box.lat);
+            cv::putText(pano, buffer, cv::Point(text_x, text_y),
+                        font_face, font_scale, color, font_thickness);
+            text_y += line_height;
+        }
+
+        if (box.lon != 0) {
+            char buffer[32];
+            snprintf(buffer, sizeof(buffer), "LON:%.6f", box.lon);
+            cv::putText(pano, buffer, cv::Point(text_x, text_y),
+                        font_face, font_scale, color, font_thickness);
+        }
+    }
 }
 
 

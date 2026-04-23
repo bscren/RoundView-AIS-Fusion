@@ -29,7 +29,7 @@ ais_batch_parser:
     # 通信方式: serial / tcp / udp
     comm_type: "serial"
     
-    # 串口配置
+    # 串口配置(当前设备就是使用串口 ttyS3 通信，波特率 38400）
     serial_port: "/dev/ttyS3"
     baud_rate: 38400
     

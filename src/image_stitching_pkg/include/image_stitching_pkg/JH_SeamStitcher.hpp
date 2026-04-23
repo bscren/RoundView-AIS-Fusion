@@ -21,6 +21,7 @@
 #include <memory>
 #include <chrono>
 #include <map>
+#include <queue>
 #include <shared_mutex>
 #include <cstdlib>
 
@@ -106,6 +107,9 @@ public:
         int crop_left = 0,
         int crop_right = 0,
         bool draw_box_or_not = true,
+        bool trajectory_dedup_enable = true,
+        double trajectory_dedup_iou_threshold_no_mmsi = 0.70,
+        std::string trajectory_dedup_keep_policy = "center",
         bool save_camera_params = false,
         string remap_dir = "",
         string cache_file = "",
@@ -172,6 +176,9 @@ private:
     int crop_left_;
     int crop_right_;
     bool draw_box_or_not_;
+    bool trajectory_dedup_enable_;
+    double trajectory_dedup_iou_threshold_no_mmsi_;
+    std::string trajectory_dedup_keep_policy_;
     bool save_camera_params_;
     string save_camera_params_file_;
     string remap_dir_;
@@ -224,7 +231,18 @@ private:
     bool checkCameraLegitimacy(const std::vector<cv::detail::CameraParams>& cameras);
     bool checkBALegitimacy(std::vector<cv::detail::CameraParams>& cameras);
     bool checkTopLeftPointsLegitimacy(const std::vector<std::vector<cv::Point2f>>& four_corners_warp);
-    float calculateIoU(const cv::Rect& a, const cv::Rect& b);
+    cv::Rect toRect(const TrajectoryBoxInfo& box) const;
+    bool isDuplicateCandidate(const TrajectoryBoxInfo& lhs, const TrajectoryBoxInfo& rhs) const;
+    double edgeDistanceScore(const TrajectoryBoxInfo& box, int width, int height) const;
+    int boxArea(const TrajectoryBoxInfo& box) const;
+    size_t selectPreferredBoxIndex(const std::vector<TrajectoryBoxInfo>& boxes,
+                                   const std::vector<int>& component,
+                                   int width,
+                                   int height) const;
+    std::vector<TrajectoryBoxInfo> deduplicateTrajectoryBoxes(const std::vector<TrajectoryBoxInfo>& boxes,
+                                                              const cv::Size& pano_size) const;
+    void drawTrajectoryBoxes(cv::Mat& pano, const std::vector<TrajectoryBoxInfo>& boxes) const;
+    float calculateIoU(const cv::Rect& a, const cv::Rect& b) const;
 };
 
 #endif // JHSTITCHER_HPP

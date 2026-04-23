@@ -13,13 +13,13 @@ parameters:
     # 订阅的相机配置列表（支持动态增减相机数量）
     cameras:
       - camera_name: "camera_0"           # 相机名称（用于映射）
-        topic_name: "/rtsp_image_0"   # 相机0的话题名 rtsp_image_2 / camera_image_topic_0
+        topic_name: "/camera_image_topic_0"   # 相机0的话题名 rtsp_image_2 / camera_image_topic_0
         camera_index: 0                       # 相机索引
       - camera_name: "camera_1"           # 相机名称（用于映射）
-        topic_name: "/rtsp_image_1"   # 相机1的话题名
+        topic_name: "/camera_image_topic_1"   # 相机1的话题名
         camera_index: 1                       # 相机索引
       - camera_name: "camera_2"           # 相机名称（用于映射）
-        topic_name: "/rtsp_image_2"   # 相机2的话题名 
+        topic_name: "/camera_image_topic_2"   # 相机2的话题名 
         camera_index: 2                       # 相机索引
     # 如需添加更多相机，按照上面的格式继续添加即可
     
@@ -47,12 +47,9 @@ parameters:
     crop_left: 50                        # 裁剪左边界像素
     crop_right: 50                       # 裁剪右边界像素
     draw_box_or_not: false               # 是否绘制检测框
-    trajectory_dedup_enable: true        # 是否启用轨迹去重
-    trajectory_dedup_iou_threshold_no_mmsi: 0.70  # 至少一方mmsi<=0时的去重IoU阈值
-    trajectory_dedup_keep_policy: "center"  # 去重保留策略（目前支持center）
     save_camera_params: false         # 是否保存相机参数
-    remap_dir: "install/image_stitching_pkg/share/image_stitching_pkg/config/remap"   # 重映射文件保存路径
-    cache_file: "install/image_stitching_pkg/share/image_stitching_pkg/config/remap/stitch_cache.yaml" # 其余缓存文件路径
+    remap_dir: "install/image_stitching_pkg/share/image_stitching_pkg/config/remap_offline"   # 重映射文件保存路径
+    cache_file: "install/image_stitching_pkg/share/image_stitching_pkg/config/remap_offline/stitch_cache.yaml" # 其余缓存文件路径
     calib_dir: "install/image_stitching_pkg/share/image_stitching_pkg/config"   # 固定的相机标定内参文件路径
     use_saved_camera_params: true     # 是否使用已保存的相机K R T参数
     FOV_hor: 105.0                   # 水平视场角

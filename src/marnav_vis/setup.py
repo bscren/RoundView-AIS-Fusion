@@ -34,7 +34,8 @@ setup(
             'config/camera_1_param_location.txt',
             'config/camera_2_param_location.txt',
             'config/track_offline_config.yaml',  # 添加YAML配置文件
-            'config/track_realtime_config.yaml'  # 添加YAML配置文件
+            'config/track_realtime_config.yaml',  # 添加YAML配置文件
+            'config/track_rosbag_config.yaml'  # rosbag模式配置文件
         ]),
         # 把deep_sort/configs目录:track function 安装到包的share目录下
         (f'share/{package_name}/deep_sort/configs', glob('deep_sort/configs/*.yaml')),

@@ -3,6 +3,11 @@
 
 # ============ 参数配置 ============
 
+# rosbag参数配置
+Rosbag_parameters:
+  rosbag_path: "/home/tl/RV/ROS_Bag/record_20260128_151506"  # rosbag文件路径
+  publish_topics: ["/rtsp_image_0", "/rtsp_image_1", "/rtsp_image_2", "/ais_batch_topic_realtime", "/gnss_topic"]  # 需要从rosbag回放的输入话题列表
+
 # 相机发布器参数配置
 CameraPublisher_parameters:
   input_frame_rate: 25             # 相机设置的输入帧率
@@ -13,7 +18,7 @@ parameters:
     # 订阅的相机配置列表（支持动态增减相机数量）
     cameras:
       - camera_name: "camera_0"           # 相机名称（用于映射）
-        topic_name: "/rtsp_image_0"   # 相机0的话题名 rtsp_image_2 / camera_image_topic_0
+        topic_name: "/rtsp_image_0"   # 相机0的话题名，应与rosbag实际记录的topic一致
         camera_index: 0                       # 相机索引
       - camera_name: "camera_1"           # 相机名称（用于映射）
         topic_name: "/rtsp_image_1"   # 相机1的话题名
@@ -46,7 +51,7 @@ parameters:
     crop_bottom: 170                      # 裁剪下边界像素
     crop_left: 50                        # 裁剪左边界像素
     crop_right: 50                       # 裁剪右边界像素
-    draw_box_or_not: false               # 是否绘制检测框
+    draw_box_or_not: true               # 是否绘制检测框
     trajectory_dedup_enable: true        # 是否启用轨迹去重
     trajectory_dedup_iou_threshold_no_mmsi: 0.70  # 至少一方mmsi<=0时的去重IoU阈值
     trajectory_dedup_keep_policy: "center"  # 去重保留策略（目前支持center）

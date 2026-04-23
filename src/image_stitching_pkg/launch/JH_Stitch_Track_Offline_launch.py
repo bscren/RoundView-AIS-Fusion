@@ -23,7 +23,7 @@ def generate_launch_description():
     # 声明图像拼接配置文件路径参数
     declare_stitch_config_file_arg = DeclareLaunchArgument(
         'stitch_config_file',
-        default_value=os.path.join(pkg_share_image_stitching, 'config', 'JH_stitch_config.yaml'),
+        default_value=os.path.join(pkg_share_image_stitching, 'config', 'JH_stitch_offline_config.yaml'),
         description='Path to the Stitch configuration file'
     )
     
